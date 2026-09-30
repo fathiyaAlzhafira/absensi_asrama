@@ -92,10 +92,12 @@ class Application extends BaseApplication
             ->add(new BodyParserMiddleware())
 
             // Cross Site Request Forgery (CSRF) Protection Middleware
-            // https://book.cakephp.org/5/en/security/csrf.html#cross-site-request-forgery-csrf-middleware
-            ->add(new CsrfProtectionMiddleware([
+            // Diabaikan untuk endpoint REST API (/api/*)
+            ->add((new CsrfProtectionMiddleware([
                 'httponly' => true,
-            ]));
+            ]))->skipCheckCallback(function ($request) {
+                return str_starts_with($request->getUri()->getPath(), '/api');
+            }));
 
         return $middlewareQueue;
     }

@@ -79,18 +79,33 @@ return function (RouteBuilder $routes): void {
     });
 
     /*
-     * If you need a different set of middleware or none at all,
-     * open new scope and define routes there.
-     *
-     * ```
-     * $routes->scope('/api', function (RouteBuilder $builder): void {
-     *     // No $builder->applyMiddleware() here.
-     *
-     *     // Parse specified extensions from URLs
-     *     // $builder->setExtensions(['json', 'xml']);
-     *
-     *     // Connect API actions here.
-     * });
-     * ```
+     * REST API Routes (/api/*)
      */
+    $routes->prefix('Api', function (RouteBuilder $builder): void {
+        $builder->setExtensions(['json']);
+
+        // Auth
+        $builder->connect('/auth/login', ['controller' => 'Auth', 'action' => 'login']);
+        $builder->connect('/auth/profile', ['controller' => 'Auth', 'action' => 'profile']);
+        $builder->connect('/auth/logout', ['controller' => 'Auth', 'action' => 'logout']);
+
+        // Presensi
+        $builder->connect('/presensis/my-history', ['controller' => 'Presensis', 'action' => 'myHistory']);
+        $builder->connect('/presensis/today-status', ['controller' => 'Presensis', 'action' => 'todayStatus']);
+        $builder->connect('/presensis', ['controller' => 'Presensis', 'action' => 'add']);
+
+        // Izin
+        $builder->connect('/izins/my-permits', ['controller' => 'Izins', 'action' => 'myPermits']);
+        $builder->connect('/izins/pending', ['controller' => 'Izins', 'action' => 'pending']);
+        $builder->connect('/izins/{id}/verify', ['controller' => 'Izins', 'action' => 'verify'])->setPass(['id']);
+        $builder->connect('/izins', ['controller' => 'Izins', 'action' => 'add']);
+
+        // Users (Admin)
+        $builder->connect('/users', ['controller' => 'Users', 'action' => 'index']);
+        $builder->connect('/users/add', ['controller' => 'Users', 'action' => 'add']);
+        $builder->connect('/users/{id}', ['controller' => 'Users', 'action' => 'edit'])->setPass(['id'])->setMethods(['PUT', 'POST']);
+        $builder->connect('/users/{id}/delete', ['controller' => 'Users', 'action' => 'delete'])->setPass(['id'])->setMethods(['DELETE', 'POST']);
+
+        $builder->fallbacks();
+    });
 };
