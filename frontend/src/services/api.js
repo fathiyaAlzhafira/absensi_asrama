@@ -125,5 +125,19 @@ export const api = {
 
   // Users (Admin)
   getUsers: (role) => apiRequest(`/users${role ? `?role=${role}` : ''}`),
-  createUser: (data) => apiRequest('/users/add', { method: 'POST', body: JSON.stringify(data) })
+  createUser: (data) => apiRequest('/users/add', { method: 'POST', body: JSON.stringify(data) }),
+  updateUser: (id, data) => apiRequest(`/users/${id}`, { method: 'POST', body: JSON.stringify(data) }),
+  deleteUser: (id) => apiRequest(`/users/${id}/delete`, { method: 'POST' }),
+
+  // Dashboard Administrator (Analytics)
+  getDashboardStats: (params = {}) => {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, val]) => {
+      if (val !== undefined && val !== null && val !== '') {
+        searchParams.append(key, val);
+      }
+    });
+    const queryString = searchParams.toString();
+    return apiRequest(`/admin/dashboard/stats${queryString ? `?${queryString}` : ''}`);
+  }
 };

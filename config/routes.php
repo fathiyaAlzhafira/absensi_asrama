@@ -106,6 +106,9 @@ return function (RouteBuilder $routes): void {
         $builder->connect('/users/{id}', ['controller' => 'Users', 'action' => 'edit'])->setPass(['id'])->setMethods(['PUT', 'POST']);
         $builder->connect('/users/{id}/delete', ['controller' => 'Users', 'action' => 'delete'])->setPass(['id'])->setMethods(['DELETE', 'POST']);
 
+        // Dashboard Admin (Analytics & Governance)
+        $builder->connect('/admin/dashboard/stats', ['controller' => 'DashboardAdmin', 'action' => 'stats']);
+
         $builder->fallbacks();
     });
 };

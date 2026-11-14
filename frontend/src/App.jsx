@@ -40,6 +40,17 @@ function RootRedirect() {
   return <Navigate to="/penghuni/dashboard" replace />;
 }
 
+// Protected Route khusus Administrator
+function AdminRoute({ children }) {
+  const { user, role } = useAuth();
+  if (!user) return <Navigate to="/login" replace />;
+  if (role !== 'admin') {
+    if (role === 'fasil') return <Navigate to="/fasil/dashboard" replace />;
+    return <Navigate to="/penghuni/dashboard" replace />;
+  }
+  return children;
+}
+
 export default function App() {
   return (
     <AuthProvider>
@@ -68,13 +79,13 @@ export default function App() {
               <Route path="/fasil/penghuni" element={<DataPenghuni />} />
               <Route path="/fasil/laporan" element={<LaporanPresensi />} />
 
-              {/* Routes Admin */}
-              <Route path="/admin/dashboard" element={<DashboardAdmin />} />
-              <Route path="/admin/users" element={<KelolaUser />} />
-              <Route path="/admin/gedungs" element={<KelolaGedung />} />
-              <Route path="/admin/kamars" element={<KelolaKamar />} />
-              <Route path="/admin/pengaturan" element={<PengaturanPresensi />} />
-              <Route path="/admin/laporan" element={<LaporanGlobal />} />
+              {/* Routes Admin (Khusus Administrator) */}
+              <Route path="/admin/dashboard" element={<AdminRoute><DashboardAdmin /></AdminRoute>} />
+              <Route path="/admin/users" element={<AdminRoute><KelolaUser /></AdminRoute>} />
+              <Route path="/admin/gedungs" element={<AdminRoute><KelolaGedung /></AdminRoute>} />
+              <Route path="/admin/kamars" element={<AdminRoute><KelolaKamar /></AdminRoute>} />
+              <Route path="/admin/pengaturan" element={<AdminRoute><PengaturanPresensi /></AdminRoute>} />
+              <Route path="/admin/laporan" element={<AdminRoute><LaporanGlobal /></AdminRoute>} />
             </Route>
 
             {/* Catch-all redirect */}

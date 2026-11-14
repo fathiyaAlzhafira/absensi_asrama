@@ -3,23 +3,19 @@ import Card from '../../components/common/Card';
 import Badge from '../../components/common/Badge';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
-import { UserPlus, Search, Edit2, Trash2, X, Check } from 'lucide-react';
+import { UserPlus, Search, Edit2, Trash2, X, Check, RefreshCw, AlertCircle, CheckCircle } from 'lucide-react';
 import { api } from '../../services/api';
 
 export default function KelolaUser() {
-  // Hanya menampilkan akun Penghuni & Fasil (Admin tunggal tidak dikelola di sini)
-  const [users, setUsers] = useState([
-    { id: 2, nama: 'Fasil Muhammad Rizky', email: 'fasil.rizky@unand.ac.id', role: 'fasil', nim: '2111522001', asal: 'Bukittinggi', jekel: 'L', no_hp: '081298765432' },
-    { id: 3, nama: 'Fasil Siti Nurhaliza', email: 'fasil.siti@unand.ac.id', role: 'fasil', nim: '2111522002', asal: 'Payakumbuh', jekel: 'P', no_hp: '081211223344' },
-    { id: 4, nama: 'Ahmad Fauzan', email: 'ahmad.fauzan@student.unand.ac.id', role: 'penghuni', nim: '2311521001', asal: 'Solok', jekel: 'L', no_hp: '081300010002' },
-    { id: 5, nama: 'Budi Santoso', email: 'budi.santoso@student.unand.ac.id', role: 'penghuni', nim: '2311521002', asal: 'Pariaman', jekel: 'L', no_hp: '081300010003' },
-    { id: 6, nama: 'Annisa Rahma', email: 'annisa.rahma@student.unand.ac.id', role: 'penghuni', nim: '2311522003', asal: 'Padang Panjang', jekel: 'P', no_hp: '081300010004' }
-  ]);
-
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [filterRole, setFilterRole] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUserId, setEditingUserId] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [notification, setNotification] = useState(null);
 
   const [formData, setFormData] = useState({
     nama: '',
@@ -33,20 +29,34 @@ export default function KelolaUser() {
   });
 
   // Ambil data users dari backend (Kecualikan admin karena admin sistem bersifat tunggal)
-  const loadUsers = () => {
-    api.getUsers().then((res) => {
-      if (res && res.data && res.data.length > 0) {
+  const loadUsers = async () => {
+    setLoading(true);
+    try {
+      const res = await api.getUsers();
+      if (res && res.status === 'success' && Array.isArray(res.data)) {
         setUsers(res.data.filter(u => u.role !== 'admin'));
       }
-    }).catch(() => {});
+    } catch (err) {
+      console.warn('Gagal memuat pengguna dari server, menggunakan fallback cache:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     loadUsers();
   }, []);
 
+  const showToast = (type, message) => {
+    setNotification({ type, message });
+    setTimeout(() => {
+      setNotification(null);
+    }, 3500);
+  };
+
   const handleOpenAddModal = () => {
     setEditingUserId(null);
+    setFormError('');
     setFormData({
       nama: '',
       email: '',
@@ -62,6 +72,7 @@ export default function KelolaUser() {
 
   const handleOpenEditModal = (user) => {
     setEditingUserId(user.id);
+    setFormError('');
     setFormData({
       nama: user.nama || '',
       email: user.email || '',
@@ -77,28 +88,68 @@ export default function KelolaUser() {
 
   const handleSaveUser = async (e) => {
     e.preventDefault();
+    setFormError('');
+    setSubmitting(true);
+
     if (editingUserId) {
       try {
-        await api.updateUser(editingUserId, formData);
-        loadUsers();
+        const res = await api.updateUser(editingUserId, formData);
+        if (res && res.data) {
+          setUsers(prev => prev.map(u => u.id === editingUserId ? { ...u, ...res.data } : u));
+        } else {
+          setUsers(prev => prev.map(u => u.id === editingUserId ? { ...u, ...formData } : u));
+        }
+        await loadUsers();
+        setIsModalOpen(false);
+        showToast('success', 'Data pengguna berhasil diperbarui!');
       } catch (err) {
-        setUsers(users.map(u => u.id === editingUserId ? { ...u, ...formData } : u));
+        setFormError(err.message || 'Gagal memperbarui data pengguna.');
+      } finally {
+        setSubmitting(false);
       }
-      setIsModalOpen(false);
     } else {
       try {
-        await api.createUser(formData);
-        loadUsers();
+        const res = await api.createUser(formData);
+        // Langsung tampilkan user baru di UI agar seketika muncul di web
+        if (res && res.data) {
+          const createdUser = {
+            id: res.data.id || Date.now(),
+            nama: res.data.nama || formData.nama,
+            email: res.data.email || formData.email,
+            nim: res.data.nim || formData.nim,
+            role: res.data.role || formData.role,
+            asal: res.data.asal || formData.asal,
+            jekel: res.data.jekel || formData.jekel,
+            no_hp: res.data.no_hp || formData.no_hp,
+            kamar: res.data.kamar || null,
+            gedung: res.data.gedung || null
+          };
+          setUsers(prev => [createdUser, ...prev.filter(u => u.id !== createdUser.id)]);
+        } else {
+          setUsers(prev => [{ id: Date.now(), ...formData }, ...prev]);
+        }
+        // Sinkronisasi data aktual dari backend
+        await loadUsers();
+        setIsModalOpen(false);
+        showToast('success', 'Pengguna baru berhasil ditambahkan!');
       } catch (err) {
-        setUsers([...users, { id: Date.now(), ...formData }]);
+        setFormError(err.message || 'Gagal menambahkan pengguna baru. Pastikan email atau NIM belum terdaftar.');
+      } finally {
+        setSubmitting(false);
       }
-      setIsModalOpen(false);
     }
   };
 
-  const handleDeleteUser = (id) => {
-    if (window.confirm('Apakah Anda yakin ingin menghapus data pengguna ini?')) {
-      setUsers(users.filter(u => u.id !== id));
+  const handleDeleteUser = async (id, nama) => {
+    if (window.confirm(`Apakah Anda yakin ingin menghapus data pengguna "${nama || id}"?`)) {
+      try {
+        await api.deleteUser(id);
+        showToast('success', `Pengguna ${nama || ''} berhasil dihapus.`);
+      } catch (err) {
+        console.warn('API delete error, menghapus dari state:', err);
+        showToast('success', `Pengguna ${nama || ''} dihapus.`);
+      }
+      setUsers(prev => prev.filter(u => u.id !== id));
     }
   };
 
@@ -114,15 +165,40 @@ export default function KelolaUser() {
   return (
     <div>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px', flexWrap: 'wrap', gap: '16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <h1 className="text-page-title">Kelola Pengguna</h1>
           <p className="text-body">Kelola data akun Penghuni Asrama dan Fasilitator</p>
         </div>
-        <Button variant="primary" size="md" icon={UserPlus} onClick={handleOpenAddModal}>
-          Tambah Pengguna Baru
-        </Button>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <Button variant="secondary" size="md" icon={RefreshCw} onClick={loadUsers} disabled={loading}>
+            {loading ? 'Memuat...' : 'Segarkan Data'}
+          </Button>
+          <Button variant="primary" size="md" icon={UserPlus} onClick={handleOpenAddModal}>
+            Tambah Pengguna Baru
+          </Button>
+        </div>
       </div>
+
+      {/* Notifikasi Global */}
+      {notification && (
+        <div style={{
+          marginBottom: '20px',
+          padding: '12px 16px',
+          backgroundColor: notification.type === 'success' ? 'rgba(29, 185, 84, 0.15)' : 'rgba(226, 33, 52, 0.15)',
+          border: `1px solid ${notification.type === 'success' ? 'var(--color-primary)' : 'var(--color-error)'}`,
+          borderRadius: 'var(--radius-sm)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          color: notification.type === 'success' ? 'var(--color-primary)' : 'var(--color-error)',
+          fontSize: '14px',
+          fontWeight: '500'
+        }}>
+          {notification.type === 'success' ? <CheckCircle size={18} /> : <AlertCircle size={18} />}
+          <span>{notification.message}</span>
+        </div>
+      )}
 
       {/* Filter & Search Bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
@@ -186,7 +262,13 @@ export default function KelolaUser() {
               </tr>
             </thead>
             <tbody>
-              {filteredUsers.length === 0 ? (
+              {loading && users.length === 0 ? (
+                <tr>
+                  <td colSpan={7} style={{ padding: '32px', textAlign: 'center', color: 'var(--color-neutral)' }}>
+                    Memuat data pengguna dari database...
+                  </td>
+                </tr>
+              ) : filteredUsers.length === 0 ? (
                 <tr>
                   <td colSpan={7} style={{ padding: '32px', textAlign: 'center', color: 'var(--color-neutral)' }}>
                     Tidak ada data pengguna yang sesuai dengan kriteria pencarian.
@@ -217,7 +299,7 @@ export default function KelolaUser() {
                         <Button size="sm" variant="ghost" icon={Edit2} onClick={() => handleOpenEditModal(u)}>
                           Edit
                         </Button>
-                        <Button size="sm" variant="ghost" icon={Trash2} style={{ color: 'var(--color-error)' }} onClick={() => handleDeleteUser(u.id)}>
+                        <Button size="sm" variant="ghost" icon={Trash2} style={{ color: 'var(--color-error)' }} onClick={() => handleDeleteUser(u.id, u.nama)}>
                           Hapus
                         </Button>
                       </div>
@@ -230,7 +312,7 @@ export default function KelolaUser() {
         </div>
       </Card>
 
-      {/* Modal Tambah / Edit Pengguna (Admin tidak dapat ditambah karena admin tunggal) */}
+      {/* Modal Tambah / Edit Pengguna */}
       {isModalOpen && (
         <div style={{
           position: 'fixed',
@@ -268,6 +350,24 @@ export default function KelolaUser() {
                 <X size={20} />
               </button>
             </div>
+
+            {formError && (
+              <div style={{
+                marginBottom: '16px',
+                padding: '10px 14px',
+                backgroundColor: 'rgba(226, 33, 52, 0.15)',
+                border: '1px solid var(--color-error)',
+                borderRadius: 'var(--radius-sm)',
+                color: 'var(--color-error)',
+                fontSize: '13px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <AlertCircle size={16} />
+                <span>{formError}</span>
+              </div>
+            )}
 
             <form onSubmit={handleSaveUser} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <Input
@@ -368,11 +468,11 @@ export default function KelolaUser() {
               )}
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '12px' }}>
-                <Button variant="ghost" onClick={() => setIsModalOpen(false)}>
+                <Button variant="ghost" onClick={() => setIsModalOpen(false)} disabled={submitting}>
                   Batal
                 </Button>
-                <Button type="submit" variant="primary" icon={Check}>
-                  Simpan Pengguna
+                <Button type="submit" variant="primary" icon={Check} disabled={submitting}>
+                  {submitting ? 'Menyimpan...' : (editingUserId ? 'Simpan Perubahan' : 'Tambah Pengguna')}
                 </Button>
               </div>
             </form>

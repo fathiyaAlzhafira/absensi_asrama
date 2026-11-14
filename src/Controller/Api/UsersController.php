@@ -17,7 +17,16 @@ class UsersController extends ApiController
         $search = $this->request->getQuery('search');
 
         $usersTable = $this->fetchTable('Users');
-        $query = $usersTable->find()->contain(['Kamars' => ['Gedungs']]);
+        $query = $usersTable->find()
+            ->contain([
+                'Kamars' => [
+                    'joinType' => 'LEFT',
+                    'Gedungs' => [
+                        'joinType' => 'LEFT',
+                    ],
+                ],
+            ])
+            ->order(['Users.id' => 'DESC']);
 
         if (!empty($role) && $role !== 'all') {
             $query->where(['Users.role' => $role]);
@@ -31,8 +40,9 @@ class UsersController extends ApiController
             ]]);
         }
 
-        $users = $query->all()->map(function ($u) {
-            return [
+        $usersList = [];
+        foreach ($query->all() as $u) {
+            $usersList[] = [
                 'id' => $u->id,
                 'nama' => $u->nama,
                 'nim' => $u->nim,
@@ -45,18 +55,23 @@ class UsersController extends ApiController
                 'kamar' => $u->kamar ? $u->kamar->nomor_kamar : null,
                 'gedung' => ($u->kamar && $u->kamar->gedung) ? $u->kamar->gedung->nama : null,
             ];
-        });
+        }
 
-        return $this->jsonSuccess($users->toArray());
+        return $this->jsonSuccess($usersList);
     }
 
     /**
      * Tambah Pengguna Baru (Admin)
-     * POST /api/users
+     * POST /api/users/add
      */
     public function add(): Response
     {
-        $this->request->allowMethod(['post']);
+        $this->request->allowMethod(['post', 'options']);
+
+        if ($this->request->is('options')) {
+            return $this->response->withStatus(200);
+        }
+
         $usersTable = $this->fetchTable('Users');
 
         $data = $this->request->getData();
@@ -68,7 +83,20 @@ class UsersController extends ApiController
 
         $user = $usersTable->newEntity($data);
         if ($usersTable->save($user)) {
-            return $this->jsonSuccess($user->toArray(), 'Pengguna berhasil ditambahkan.', 201);
+            $userData = [
+                'id' => $user->id,
+                'nama' => $user->nama,
+                'nim' => $user->nim,
+                'email' => $user->email,
+                'role' => $user->role,
+                'asal' => $user->asal,
+                'jekel' => $user->jekel,
+                'no_hp' => $user->no_hp,
+                'kamar_id' => $user->kamar_id,
+                'kamar' => null,
+                'gedung' => null,
+            ];
+            return $this->jsonSuccess($userData, 'Pengguna berhasil ditambahkan.', 201);
         }
 
         return $this->jsonError('Gagal menambahkan pengguna.', 422, $user->getErrors());
