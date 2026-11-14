@@ -7,7 +7,7 @@ export default function Topbar() {
   const { user } = useAuth();
 
   return (
-    <header style={{
+    <header className="topbar-header" style={{
       minHeight: '64px',
       backgroundColor: 'var(--color-surface-l1)',
       borderBottom: '1px solid var(--color-border)',
@@ -19,7 +19,8 @@ export default function Topbar() {
       top: 0,
       zIndex: 90,
       gap: '12px',
-      flexWrap: 'nowrap'
+      flexWrap: 'nowrap',
+      overflow: 'hidden'
     }}>
       {/* Sisi Kiri: Info Sesi Presensi & Lokasi */}
       <div style={{
@@ -27,7 +28,8 @@ export default function Topbar() {
         alignItems: 'center',
         gap: '10px',
         minWidth: 0,
-        flexShrink: 1
+        flex: '1 1 auto',
+        overflow: 'hidden'
       }}>
         <div style={{
           display: 'flex',
@@ -40,14 +42,17 @@ export default function Topbar() {
           color: 'var(--color-text-secondary)',
           border: '1px solid var(--color-border)',
           whiteSpace: 'nowrap',
+          maxWidth: '100%',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
           flexShrink: 1
         }}>
           <Clock size={14} color="var(--color-primary)" style={{ flexShrink: 0 }} />
-          <span className="sesi-full-text">
+          <span className="sesi-full-text" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
             Sesi: <strong style={{ color: 'var(--color-text-primary)' }}>Subuh (04.00-06.00)</strong> & <strong style={{ color: 'var(--color-text-primary)' }}>Malam (18.00-20.30)</strong>
           </span>
           <span className="sesi-compact-text">
-            <strong style={{ color: 'var(--color-text-primary)' }}>Subuh & Malam</strong>
+            Sesi: <strong style={{ color: 'var(--color-text-primary)' }}>Subuh & Malam</strong>
           </span>
         </div>
 
@@ -57,7 +62,8 @@ export default function Topbar() {
           gap: '6px',
           fontSize: '12px',
           color: 'var(--color-neutral)',
-          whiteSpace: 'nowrap'
+          whiteSpace: 'nowrap',
+          flexShrink: 0
         }}>
           <MapPin size={13} color="var(--color-warning)" style={{ flexShrink: 0 }} />
           <span>Asrama Unand Limau Manis</span>
@@ -82,12 +88,13 @@ export default function Topbar() {
             backgroundColor: 'var(--color-surface-l2)',
             border: '1px solid var(--color-border)',
             transition: 'all var(--transition-fast)',
-            whiteSpace: 'nowrap'
+            whiteSpace: 'nowrap',
+            textDecoration: 'none'
           }}
         >
           <div style={{
-            width: '30px',
-            height: '30px',
+            width: '32px',
+            height: '32px',
             borderRadius: '50%',
             backgroundColor: 'var(--color-secondary)',
             display: 'flex',
@@ -125,7 +132,11 @@ export default function Topbar() {
 
       <style>{`
         .topbar-profile-chip {
-          padding: 5px 12px;
+          padding: 4px 12px 4px 5px;
+        }
+        .topbar-profile-chip:hover {
+          background-color: var(--color-surface-l3) !important;
+          border-color: var(--color-neutral) !important;
         }
         .sesi-compact-text {
           display: none;
@@ -134,10 +145,13 @@ export default function Topbar() {
           display: inline;
         }
 
-        @media (max-width: 768px) {
+        @media (max-width: 1080px) {
           .hide-on-tablet {
             display: none !important;
           }
+        }
+
+        @media (max-width: 900px) {
           .sesi-full-text {
             display: none !important;
           }
@@ -148,8 +162,17 @@ export default function Topbar() {
             display: none !important;
           }
           .topbar-profile-chip {
-            padding: 4px !important;
+            padding: 3px !important;
             border-radius: 50% !important;
+            width: 38px !important;
+            height: 38px !important;
+            justify-content: center !important;
+          }
+        }
+
+        @media (max-width: 520px) {
+          .topbar-header {
+            padding: 8px 12px !important;
           }
         }
       `}</style>

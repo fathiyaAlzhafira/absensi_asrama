@@ -8,60 +8,18 @@ import { api } from '../../services/api';
 
 export default function RiwayatPresensi() {
   const [selectedPhoto, setSelectedPhoto] = useState(null);
-  const [filterMonth, setFilterMonth] = useState('2026-09');
-  const [riwayat, setRiwayat] = useState([
-    {
-      id: 1,
-      tanggal: '2026-09-24',
-      waktu: '05:15:00',
-      sesi: 'subuh',
-      status: 'hadir',
-      lat: '-0.91421000',
-      long: '100.46191000',
-      keterangan: 'Tepat waktu di asrama',
-      foto_wajah: '/assets/asrama-unand.jpg'
-    },
-    {
-      id: 2,
-      tanggal: '2026-09-23',
-      waktu: '19:40:00',
-      sesi: 'malam',
-      status: 'hadir',
-      lat: '-0.91420500',
-      long: '100.46189500',
-      keterangan: 'Hadir di asrama putra',
-      foto_wajah: '/assets/asrama-unand.jpg'
-    },
-    {
-      id: 3,
-      tanggal: '2026-09-23',
-      waktu: '05:30:00',
-      sesi: 'subuh',
-      status: 'hadir',
-      lat: '-0.91422000',
-      long: '100.46189000',
-      keterangan: 'Tepat waktu',
-      foto_wajah: '/assets/asrama-unand.jpg'
-    },
-    {
-      id: 4,
-      tanggal: '2026-09-22',
-      waktu: '00:00:00',
-      sesi: 'malam',
-      status: 'izin',
-      lat: null,
-      long: null,
-      keterangan: 'Izin Pulang Kampung',
-      foto_wajah: null
-    }
-  ]);
+  const [filterMonth, setFilterMonth] = useState('');
+  const [riwayat, setRiwayat] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setLoading(true);
     api.getMyPresensi().then((res) => {
-      if (res && res.data && res.data.length > 0) {
+      if (res && res.data) {
         setRiwayat(res.data);
       }
-    }).catch(() => {});
+    }).catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   return (
@@ -99,7 +57,20 @@ export default function RiwayatPresensi() {
               </tr>
             </thead>
             <tbody>
-              {riwayat.map((row) => (
+              {loading ? (
+                <tr>
+                  <td colSpan={7} style={{ padding: '32px', textAlign: 'center', color: 'var(--color-neutral)' }}>
+                    Memuat data riwayat presensi...
+                  </td>
+                </tr>
+              ) : riwayat.length === 0 ? (
+                <tr>
+                  <td colSpan={7} style={{ padding: '32px', textAlign: 'center', color: 'var(--color-neutral)' }}>
+                    Belum ada riwayat presensi yang tercatat.
+                  </td>
+                </tr>
+              ) : (
+                riwayat.map((row) => (
                 <tr key={row.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
                   <td style={{ padding: '16px', color: 'var(--color-text-primary)', fontWeight: '600' }}>{row.tanggal}</td>
                   <td style={{ padding: '16px' }}>
@@ -134,7 +105,7 @@ export default function RiwayatPresensi() {
                     )}
                   </td>
                 </tr>
-              ))}
+              )))}
             </tbody>
           </table>
         </div>

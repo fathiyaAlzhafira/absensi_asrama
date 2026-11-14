@@ -67,6 +67,11 @@ class IzinsTable extends Table
             ->notEmptyString('jenis_izin');
 
         $validator
+            ->scalar('sesi')
+            ->allowEmptyString('sesi')
+            ->inList('sesi', ['semua', 'subuh', 'malam'], 'Pilihan sesi izin tidak valid.');
+
+        $validator
             ->date('tanggal_mulai')
             ->requirePresence('tanggal_mulai', 'create')
             ->notEmptyDate('tanggal_mulai');
@@ -85,7 +90,7 @@ class IzinsTable extends Table
             ->scalar('bukti_file')
             ->maxLength('bukti_file', 255)
             ->requirePresence('bukti_file', 'create')
-            ->notEmptyFile('bukti_file');
+            ->notEmptyString('bukti_file');
 
         $validator
             ->scalar('status')

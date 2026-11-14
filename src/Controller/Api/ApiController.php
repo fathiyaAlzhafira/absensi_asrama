@@ -56,4 +56,36 @@ class ApiController extends AppController
             'errors' => $errors
         ], $status);
     }
+
+    /**
+     * Dapatkan ID Pengguna yang terautentikasi dari Bearer Token
+     */
+    protected function getAuthUserId(): int
+    {
+        $authHeader = $this->request->getHeaderLine('Authorization');
+        if (!empty($authHeader) && preg_match('/Bearer\s+(.*)$/i', $authHeader, $matches)) {
+            $rawToken = trim($matches[1]);
+
+            // Tangani token offline dummy
+            if ($rawToken === 'offline_token_admin') return 1;
+            if ($rawToken === 'offline_token_fasil') return 3;
+            if ($rawToken === 'offline_token_penghuni') return 4;
+
+            // Coba decode base64 token riil
+            $decoded = base64_decode($rawToken, true);
+            if ($decoded !== false && str_contains($decoded, ':')) {
+                $parts = explode(':', $decoded);
+                $id = (int)$parts[0];
+                if ($id > 0) {
+                    $usersTable = $this->fetchTable('Users');
+                    if ($usersTable->exists(['id' => $id])) {
+                        return $id;
+                    }
+                }
+            }
+        }
+
+        // Default pengguna Ahmad Fauzan (ID 4)
+        return 4;
+    }
 }

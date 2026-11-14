@@ -3,8 +3,8 @@
  * Menghubungkan Frontend React ke Backend CakePHP
  */
 
-const PRIMARY_API_URL = 'http://localhost:8765/api';
-const FALLBACK_API_URL = '/api';
+const PRIMARY_API_URL = '/api';
+const FALLBACK_API_URL = 'http://localhost:8765/api';
 
 export async function apiRequest(endpoint, options = {}) {
   const token = localStorage.getItem('asrama_token');
@@ -23,27 +23,32 @@ export async function apiRequest(endpoint, options = {}) {
     }
   };
 
-  // Coba ke http://localhost:8765/api terlebih dahulu, jika gagal coba ke relative /api
+  let response;
   try {
-    const response = await fetch(`${PRIMARY_API_URL}${endpoint}`, config);
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
-    }
-    return await response.json();
-  } catch (primaryErr) {
+    response = await fetch(`${PRIMARY_API_URL}${endpoint}`, config);
+  } catch (netErr) {
+    // Hanya beralih ke fallback URL jika koneksi network ke PRIMARY_API_URL benar-benar terputus
     try {
-      const response = await fetch(`${FALLBACK_API_URL}${endpoint}`, config);
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
-      }
-      return await response.json();
-    } catch (fallbackErr) {
-      console.warn(`API Error on ${endpoint}:`, primaryErr.message);
-      throw primaryErr;
+      response = await fetch(`${FALLBACK_API_URL}${endpoint}`, config);
+    } catch (fallbackNetErr) {
+      console.warn(`Network Error on ${endpoint}:`, netErr.message);
+      throw new Error('Tidak dapat terhubung ke server backend. Pastikan server CakePHP sedang aktif.');
     }
   }
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    let errorMsg = errorData.message;
+    if (!errorMsg && errorData.errors) {
+      // Ambil detail error validasi dari CakePHP jika ada
+      errorMsg = Object.values(errorData.errors)
+        .map(err => typeof err === 'object' ? Object.values(err).join(', ') : err)
+        .join(', ');
+    }
+    throw new Error(errorMsg || `Permintaan gagal (status: ${response.status})`);
+  }
+
+  return await response.json();
 }
 
 // Shortcut API Methods

@@ -86,17 +86,7 @@ class AuthController extends ApiController
             return $this->response->withStatus(200);
         }
 
-        // Ambil header authorization jika ada
-        $authHeader = $this->request->getHeaderLine('Authorization');
-        $userId = 4; // default penghuni Ahmad Fauzan jika tanpa token
-
-        if (!empty($authHeader) && preg_match('/Bearer\s+(.*)$/i', $authHeader, $matches)) {
-            $decoded = base64_decode($matches[1]);
-            $parts = explode(':', $decoded);
-            if (!empty($parts[0])) {
-                $userId = (int)$parts[0];
-            }
-        }
+        $userId = $this->getAuthUserId();
 
         $usersTable = $this->fetchTable('Users');
         $user = $usersTable->find()

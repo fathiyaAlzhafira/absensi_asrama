@@ -231,6 +231,7 @@ export default function Sidebar() {
               <NavLink
                 key={idx}
                 to={item.path}
+                end
                 title={!isOpen ? item.label : undefined}
                 style={({ isActive }) => ({
                   display: 'flex',

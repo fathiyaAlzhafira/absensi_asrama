@@ -10,7 +10,7 @@ import { api } from '../../services/api';
 export default function DashboardPenghuni() {
   const { user } = useAuth();
   const [todayStatus, setTodayStatus] = useState({
-    subuh: { status: 'hadir', waktu: '05:15 WIB' },
+    subuh: null,
     malam: null
   });
 

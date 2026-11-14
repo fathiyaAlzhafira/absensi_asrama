@@ -44,10 +44,37 @@ class PresensisController extends ApiController
             ->where(['user_id' => $userId, 'tanggal' => $today, 'sesi' => 'malam'])
             ->first();
 
+        // Periksa apakah ada izin yang disetujui untuk sesi hari ini
+        $izinsTable = $this->fetchTable('Izins');
+        $approvedIzins = $izinsTable->find()
+            ->where([
+                'user_id' => $userId,
+                'status' => 'disetujui',
+                'tanggal_mulai <=' => $today,
+                'tanggal_selesai >=' => $today
+            ])
+            ->all();
+
+        $subuhIzin = false;
+        $malamIzin = false;
+        foreach ($approvedIzins as $iz) {
+            if ($iz->sesi === 'semua' || empty($iz->sesi)) {
+                $subuhIzin = true;
+                $malamIzin = true;
+            } elseif ($iz->sesi === 'subuh') {
+                $subuhIzin = true;
+            } elseif ($iz->sesi === 'malam') {
+                $malamIzin = true;
+            }
+        }
+
+        $subuhData = $subuh ? ['status' => $subuh->status, 'waktu' => $subuh->waktu->format('H:i')] : ($subuhIzin ? ['status' => 'izin', 'waktu' => 'Izin Disetujui'] : null);
+        $malamData = $malam ? ['status' => $malam->status, 'waktu' => $malam->waktu->format('H:i')] : ($malamIzin ? ['status' => 'izin', 'waktu' => 'Izin Disetujui'] : null);
+
         return $this->jsonSuccess([
             'today' => $today,
-            'subuh' => $subuh ? ['status' => $subuh->status, 'waktu' => $subuh->waktu->format('H:i')] : null,
-            'malam' => $malam ? ['status' => $malam->status, 'waktu' => $malam->waktu->format('H:i')] : null
+            'subuh' => $subuhData,
+            'malam' => $malamData
         ]);
     }
 
@@ -72,18 +99,5 @@ class PresensisController extends ApiController
         }
 
         return $this->jsonError('Gagal mencatat presensi.', 422, $presensi->getErrors());
-    }
-
-    private function getAuthUserId(): int
-    {
-        $authHeader = $this->request->getHeaderLine('Authorization');
-        if (!empty($authHeader) && preg_match('/Bearer\s+(.*)$/i', $authHeader, $matches)) {
-            $decoded = base64_decode($matches[1]);
-            $parts = explode(':', $decoded);
-            if (!empty($parts[0])) {
-                return (int)$parts[0];
-            }
-        }
-        return 4; // default Ahmad Fauzan jika belum ada token
     }
 }

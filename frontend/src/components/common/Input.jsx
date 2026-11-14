@@ -17,7 +17,8 @@ export default function Input({
   disabled = false,
   required = false,
   className = '',
-  style = {}
+  style = {},
+  ...rest
 }) {
   const [isFocused, setIsFocused] = useState(false);
 
@@ -64,6 +65,7 @@ export default function Input({
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
           className={className}
+          {...rest}
           style={{
             width: '100%',
             height: '42px',
