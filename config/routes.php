@@ -109,6 +109,7 @@ return function (RouteBuilder $routes): void {
 
         // Dashboard Admin (Analytics & Governance)
         $builder->connect('/admin/dashboard/stats', ['controller' => 'DashboardAdmin', 'action' => 'stats']);
+        $builder->connect('/admin/reports/global', ['controller' => 'DashboardAdmin', 'action' => 'globalReport']);
 
         $builder->fallbacks();
     });

@@ -266,6 +266,208 @@ class DashboardAdminController extends ApiController
     }
 
     /**
+     * Laporan presensi global sesuai periode, gedung, dan sesi.
+     * GET /api/admin/reports/global
+     */
+    public function globalReport(): Response
+    {
+        $this->request->allowMethod(['get', 'options']);
+
+        if ($this->request->is('options')) {
+            return $this->response->withStatus(200);
+        }
+
+        $authError = $this->checkAdminAuthorization();
+        if ($authError !== null) {
+            return $authError;
+        }
+
+        $startDate = (string)$this->request->getQuery('start_date', '');
+        $endDate = (string)$this->request->getQuery('end_date', '');
+        if (!$this->isValidReportDate($startDate) || !$this->isValidReportDate($endDate)) {
+            return $this->jsonError('Rentang tanggal laporan tidak valid.', 422);
+        }
+        if ($startDate > $endDate) {
+            return $this->jsonError('Tanggal mulai tidak boleh melewati tanggal akhir.', 422);
+        }
+
+        $selectedGedungId = (string)$this->request->getQuery('gedung_id', 'all');
+        $selectedSession = (string)$this->request->getQuery('sesi', 'all');
+        if (!in_array($selectedSession, ['all', 'subuh', 'malam'], true)) {
+            return $this->jsonError('Sesi presensi yang dipilih tidak valid.', 422);
+        }
+
+        $gedungs = $this->fetchTable('Gedungs')->find()
+            ->select(['id', 'nama'])
+            ->order(['nama' => 'ASC'])
+            ->all()
+            ->toArray();
+        $gedungIds = array_map(static fn($gedung): int => (int)$gedung->id, $gedungs);
+        if ($selectedGedungId !== 'all') {
+            $validatedGedungId = filter_var($selectedGedungId, FILTER_VALIDATE_INT);
+            if ($validatedGedungId === false || !in_array((int)$validatedGedungId, $gedungIds, true)) {
+                return $this->jsonError('Gedung yang dipilih tidak valid.', 422);
+            }
+            $selectedGedungId = (string)$validatedGedungId;
+        }
+
+        $penghuniQuery = $this->fetchTable('Users')->find()
+            ->contain(['Kamars' => ['Gedungs']])
+            ->innerJoinWith('Kamars.Gedungs')
+            ->where(['Users.role' => 'penghuni']);
+        if ($selectedGedungId !== 'all') {
+            $penghuniQuery->where(['Gedungs.id' => $selectedGedungId]);
+        }
+
+        $penghuni = $penghuniQuery->all()->toArray();
+        $penghuniIds = array_map(static fn($user): int => (int)$user->id, $penghuni);
+        $rowsByUser = [];
+        foreach ($penghuni as $user) {
+            $rowsByUser[(int)$user->id] = [
+                'user_id' => (int)$user->id,
+                'nama' => $user->nama,
+                'nim' => $user->nim,
+                'gedung' => $user->kamar->gedung->nama,
+                'kamar' => $user->kamar->nomor_kamar,
+                'waktu_absen' => null,
+                'total_presensi' => 0,
+                'hadir' => 0,
+                'terlambat' => 0,
+                'izin' => 0,
+                'alpa' => 0,
+                'persentase_kehadiran' => 0.0,
+            ];
+        }
+
+        $daily = [];
+        $summary = [
+            'total_penghuni' => count($penghuni),
+            'total_presensi' => 0,
+            'hadir' => 0,
+            'terlambat' => 0,
+            'izin' => 0,
+            'alpa' => 0,
+            'persentase_kehadiran' => 0.0,
+        ];
+
+        if ($penghuniIds !== []) {
+            $presensiQuery = $this->fetchTable('Presensis')->find()
+                ->contain(['Users'])
+                ->where([
+                    'Presensis.user_id IN' => $penghuniIds,
+                    'Presensis.tanggal >=' => $startDate,
+                    'Presensis.tanggal <=' => $endDate,
+                ])
+                ->order([
+                    'Presensis.tanggal' => 'ASC',
+                    'Presensis.waktu' => 'ASC',
+                    'Presensis.id' => 'ASC',
+                ]);
+            if ($selectedSession !== 'all') {
+                $presensiQuery->where(['Presensis.sesi' => $selectedSession]);
+            }
+
+            foreach ($presensiQuery->all() as $record) {
+                $userId = (int)$record->user_id;
+                $status = (string)$record->status;
+                $date = $record->tanggal->format('Y-m-d');
+                if (!isset($rowsByUser[$userId]) || !isset($summary[$status])) {
+                    continue;
+                }
+
+                $rowsByUser[$userId]['total_presensi']++;
+                $rowsByUser[$userId][$status]++;
+                $rowsByUser[$userId]['waktu_absen'] = [
+                    'tanggal' => $date,
+                    'sesi' => (string)$record->sesi,
+                    'waktu' => $record->waktu->format('H:i:s'),
+                ];
+                $summary['total_presensi']++;
+                $summary[$status]++;
+
+                if (!isset($daily[$date])) {
+                    $daily[$date] = [
+                        'total_presensi' => 0,
+                        'hadir' => 0,
+                        'terlambat' => 0,
+                        'izin' => 0,
+                        'alpa' => 0,
+                    ];
+                }
+                $daily[$date]['total_presensi']++;
+                $daily[$date][$status]++;
+            }
+        }
+
+        foreach ($rowsByUser as &$row) {
+            $row['persentase_kehadiran'] = $row['total_presensi'] > 0
+                ? round((($row['hadir'] + $row['terlambat']) / $row['total_presensi']) * 100, 1)
+                : 0.0;
+        }
+        unset($row);
+
+        $summary['persentase_kehadiran'] = $summary['total_presensi'] > 0
+            ? round((($summary['hadir'] + $summary['terlambat']) / $summary['total_presensi']) * 100, 1)
+            : 0.0;
+
+        $trend = [];
+        $dateRange = new DatePeriod(
+            new DateTime($startDate),
+            new DateInterval('P1D'),
+            (new DateTime($endDate))->modify('+1 day')
+        );
+        foreach ($dateRange as $date) {
+            $dateKey = $date->format('Y-m-d');
+            $values = $daily[$dateKey] ?? [
+                'total_presensi' => 0,
+                'hadir' => 0,
+                'terlambat' => 0,
+                'izin' => 0,
+                'alpa' => 0,
+            ];
+            $values['tanggal'] = $dateKey;
+            $values['persentase_kehadiran'] = $values['total_presensi'] > 0
+                ? round((($values['hadir'] + $values['terlambat']) / $values['total_presensi']) * 100, 1)
+                : 0.0;
+            $trend[] = $values;
+        }
+
+        $rows = array_values($rowsByUser);
+        usort($rows, static function (array $left, array $right): int {
+            return [$left['gedung'], $left['kamar'], $left['nama']]
+                <=> [$right['gedung'], $right['kamar'], $right['nama']];
+        });
+
+        return $this->jsonSuccess([
+            'filter' => [
+                'start_date' => $startDate,
+                'end_date' => $endDate,
+                'gedung_id' => $selectedGedungId,
+                'sesi' => $selectedSession,
+            ],
+            'gedungs' => array_merge(
+                [['id' => 'all', 'nama' => 'Semua Gedung Asrama']],
+                array_map(static function ($gedung): array {
+                    return ['id' => (string)$gedung->id, 'nama' => $gedung->nama];
+                }, $gedungs)
+            ),
+            'summary' => $summary,
+            'trend' => $trend,
+            'rows' => $rows,
+        ], 'Laporan global berhasil dimuat.');
+    }
+
+    private function isValidReportDate(string $date): bool
+    {
+        $parsed = \DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+        $errors = \DateTimeImmutable::getLastErrors();
+
+        return $parsed !== false
+            && $parsed->format('Y-m-d') === $date
+            && ($errors === false || ($errors['warning_count'] === 0 && $errors['error_count'] === 0));
+    }
+
+    /**
      * Tentukan status sesi: 'belum_dimulai', 'berlangsung', atau 'selesai'
      */
     private function calculateSessionStatus(
