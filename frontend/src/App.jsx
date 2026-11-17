@@ -3,6 +3,13 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { SidebarProvider } from './context/SidebarContext';
 
+// Protected Route Guard
+import ProtectedRoute, {
+  PublicRoute,
+  SessionLoadingScreen,
+  getDashboardPath,
+} from './components/ProtectedRoute';
+
 // Layout
 import MainLayout from './components/layout/MainLayout';
 
@@ -34,10 +41,17 @@ import LaporanGlobal from './pages/admin/LaporanGlobal';
 
 // Helper component for Root Redirect
 function RootRedirect() {
-  const { role } = useAuth();
-  if (role === 'fasil') return <Navigate to="/fasil/dashboard" replace />;
-  if (role === 'admin') return <Navigate to="/admin/dashboard" replace />;
-  return <Navigate to="/penghuni/dashboard" replace />;
+  const { user, role, loading } = useAuth();
+
+  if (loading) {
+    return <SessionLoadingScreen />;
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <Navigate to={getDashboardPath(role)} replace />;
 }
 
 export default function App() {
@@ -46,38 +60,60 @@ export default function App() {
       <SidebarProvider>
         <BrowserRouter>
           <Routes>
-            {/* Public / Auth */}
-            <Route path="/login" element={<Login />} />
+            {/* Public / Auth (Hanya jika belum login) */}
+            <Route
+              path="/login"
+              element={
+                <PublicRoute>
+                  <Login />
+                </PublicRoute>
+              }
+            />
 
-            {/* Main App Layout */}
-            <Route element={<MainLayout />}>
-              <Route path="/" element={<RootRedirect />} />
+            {/* Root URL Redirect ke dashboard sesuai role atau login */}
+            <Route path="/" element={<RootRedirect />} />
+
+            {/* Main App Layout - Dilindungi ProtectedRoute (Harus sudah login) */}
+            <Route
+              element={
+                <ProtectedRoute>
+                  <MainLayout />
+                </ProtectedRoute>
+              }
+            >
+              {/* Profil dapat diakses oleh semua role yang sudah login */}
               <Route path="/profil" element={<Profile />} />
 
-              {/* Routes Penghuni */}
-              <Route path="/penghuni/dashboard" element={<DashboardPenghuni />} />
-              <Route path="/penghuni/presensi" element={<Presensi />} />
-              <Route path="/penghuni/riwayat" element={<RiwayatPresensi />} />
-              <Route path="/penghuni/izin" element={<StatusIzin />} />
-              <Route path="/penghuni/izin/tambah" element={<PengajuanIzin />} />
+              {/* Routes Khusus Penghuni */}
+              <Route element={<ProtectedRoute allowedRoles={['penghuni']} />}>
+                <Route path="/penghuni/dashboard" element={<DashboardPenghuni />} />
+                <Route path="/penghuni/presensi" element={<Presensi />} />
+                <Route path="/penghuni/riwayat" element={<RiwayatPresensi />} />
+                <Route path="/penghuni/izin" element={<StatusIzin />} />
+                <Route path="/penghuni/izin/tambah" element={<PengajuanIzin />} />
+              </Route>
 
-              {/* Routes Fasil */}
-              <Route path="/fasil/dashboard" element={<DashboardFasil />} />
-              <Route path="/fasil/presensi" element={<MonitoringPresensi />} />
-              <Route path="/fasil/izin" element={<VerifikasiIzin />} />
-              <Route path="/fasil/penghuni" element={<DataPenghuni />} />
-              <Route path="/fasil/laporan" element={<LaporanPresensi />} />
+              {/* Routes Khusus Fasilitator (Fasil) */}
+              <Route element={<ProtectedRoute allowedRoles={['fasil']} />}>
+                <Route path="/fasil/dashboard" element={<DashboardFasil />} />
+                <Route path="/fasil/presensi" element={<MonitoringPresensi />} />
+                <Route path="/fasil/izin" element={<VerifikasiIzin />} />
+                <Route path="/fasil/penghuni" element={<DataPenghuni />} />
+                <Route path="/fasil/laporan" element={<LaporanPresensi />} />
+              </Route>
 
-              {/* Routes Admin */}
-              <Route path="/admin/dashboard" element={<DashboardAdmin />} />
-              <Route path="/admin/users" element={<KelolaUser />} />
-              <Route path="/admin/gedungs" element={<KelolaGedung />} />
-              <Route path="/admin/kamars" element={<KelolaKamar />} />
-              <Route path="/admin/pengaturan" element={<PengaturanPresensi />} />
-              <Route path="/admin/laporan" element={<LaporanGlobal />} />
+              {/* Routes Khusus Admin */}
+              <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+                <Route path="/admin/dashboard" element={<DashboardAdmin />} />
+                <Route path="/admin/users" element={<KelolaUser />} />
+                <Route path="/admin/gedungs" element={<KelolaGedung />} />
+                <Route path="/admin/kamars" element={<KelolaKamar />} />
+                <Route path="/admin/pengaturan" element={<PengaturanPresensi />} />
+                <Route path="/admin/laporan" element={<LaporanGlobal />} />
+              </Route>
             </Route>
 
-            {/* Catch-all redirect */}
+            {/* Catch-all redirect ke root */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>

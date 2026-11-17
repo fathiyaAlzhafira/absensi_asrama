@@ -250,9 +250,9 @@ export default function Login() {
             <div style={{ fontWeight: '700', color: 'var(--color-text-primary)', marginBottom: '4px' }}>
               Informasi Kredensial Database:
             </div>
-            <div>• <strong>Penghuni:</strong> ahmad.fauzan@student.unand.ac.id / password123</div>
-            <div>• <strong>Fasil:</strong> fasil.rizky@unand.ac.id / password123</div>
-            <div>• <strong>Admin:</strong> admin@unand.ac.id / password123</div>
+            <div>• <strong>Penghuni:</strong> penghuni1@absensi.test / Penghuni123!</div>
+<div>• <strong>Fasil:</strong> fasil1@absensi.test / Fasil123!</div>
+<div>• <strong>Admin:</strong> admin@absensi.test / Admin123!</div>
           </div>
         </div>
       </div>

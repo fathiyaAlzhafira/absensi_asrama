@@ -53,6 +53,7 @@ class User extends Entity
         'kamar' => true,
         'izins' => true,
         'presensis' => true,
+        'auth_tokens' => true,
     ];
 
     /**

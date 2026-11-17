@@ -90,6 +90,9 @@ return function (RouteBuilder $routes): void {
         $builder->connect('/auth/logout', ['controller' => 'Auth', 'action' => 'logout']);
 
         // Presensi
+        $builder->connect('/presensis/fasil-dashboard', ['controller' => 'Presensis', 'action' => 'fasilDashboard']);
+        $builder->connect('/presensis/monitoring', ['controller' => 'Presensis', 'action' => 'monitoring'])->setMethods(['GET']);
+        $builder->connect('/presensis/monitoring/{id}', ['controller' => 'Presensis', 'action' => 'monitoringDetail'])->setPass(['id'])->setMethods(['GET']);
         $builder->connect('/presensis/my-history', ['controller' => 'Presensis', 'action' => 'myHistory']);
         $builder->connect('/presensis/today-status', ['controller' => 'Presensis', 'action' => 'todayStatus']);
         $builder->connect('/presensis', ['controller' => 'Presensis', 'action' => 'add']);
@@ -97,12 +100,17 @@ return function (RouteBuilder $routes): void {
         // Izin
         $builder->connect('/izins/my-permits', ['controller' => 'Izins', 'action' => 'myPermits']);
         $builder->connect('/izins/pending', ['controller' => 'Izins', 'action' => 'pending']);
+        $builder->connect('/izins/list', ['controller' => 'Izins', 'action' => 'listAll'])->setMethods(['GET']);
+        $builder->connect('/izins/{id}', ['controller' => 'Izins', 'action' => 'detail'])->setPass(['id'])->setMethods(['GET']);
         $builder->connect('/izins/{id}/verify', ['controller' => 'Izins', 'action' => 'verify'])->setPass(['id']);
         $builder->connect('/izins', ['controller' => 'Izins', 'action' => 'add']);
 
-        // Users (Admin)
-        $builder->connect('/users', ['controller' => 'Users', 'action' => 'index']);
-        $builder->connect('/users/add', ['controller' => 'Users', 'action' => 'add']);
+        // Users (Admin & Fasil)
+        $builder->connect('/users', ['controller' => 'Users', 'action' => 'index'])->setMethods(['GET']);
+        $builder->connect('/users/add', ['controller' => 'Users', 'action' => 'add'])->setMethods(['POST']);
+        $builder->connect('/users/{id}/presensis', ['controller' => 'Users', 'action' => 'presensis'])->setPass(['id'])->setMethods(['GET']);
+        $builder->connect('/users/{id}/izins', ['controller' => 'Users', 'action' => 'izins'])->setPass(['id'])->setMethods(['GET']);
+        $builder->connect('/users/{id}/detail', ['controller' => 'Users', 'action' => 'detail'])->setPass(['id'])->setMethods(['GET']);
         $builder->connect('/users/{id}', ['controller' => 'Users', 'action' => 'edit'])->setPass(['id'])->setMethods(['PUT', 'POST']);
         $builder->connect('/users/{id}/delete', ['controller' => 'Users', 'action' => 'delete'])->setPass(['id'])->setMethods(['DELETE', 'POST']);
 

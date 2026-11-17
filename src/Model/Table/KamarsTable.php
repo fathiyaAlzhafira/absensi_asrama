@@ -46,7 +46,7 @@ class KamarsTable extends Table
 
         $this->belongsTo('Gedungs', [
             'foreignKey' => 'gedung_id',
-            'joinType' => 'INNER',
+            'joinType' => 'LEFT',
         ]);
         $this->hasMany('Users', [
             'foreignKey' => 'kamar_id',

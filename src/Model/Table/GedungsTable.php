@@ -46,6 +46,10 @@ class GedungsTable extends Table
         $this->hasMany('Kamars', [
             'foreignKey' => 'gedung_id',
         ]);
+        $this->belongsTo('Users', [
+            'foreignKey' => 'id_user',
+            'joinType' => 'LEFT',
+        ]);
     }
 
     /**
