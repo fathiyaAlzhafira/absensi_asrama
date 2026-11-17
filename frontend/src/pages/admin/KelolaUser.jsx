@@ -7,14 +7,8 @@ import { UserPlus, Search, Edit2, Trash2, X, Check } from 'lucide-react';
 import { api } from '../../services/api';
 
 export default function KelolaUser() {
-  // Hanya menampilkan akun Penghuni & Fasil (Admin tunggal tidak dikelola di sini)
-  const [users, setUsers] = useState([
-    { id: 2, nama: 'Fasil Muhammad Rizky', email: 'fasil.rizky@unand.ac.id', role: 'fasil', nim: '2111522001', asal: 'Bukittinggi', jekel: 'L', no_hp: '081298765432' },
-    { id: 3, nama: 'Fasil Siti Nurhaliza', email: 'fasil.siti@unand.ac.id', role: 'fasil', nim: '2111522002', asal: 'Payakumbuh', jekel: 'P', no_hp: '081211223344' },
-    { id: 4, nama: 'Ahmad Fauzan', email: 'ahmad.fauzan@student.unand.ac.id', role: 'penghuni', nim: '2311521001', asal: 'Solok', jekel: 'L', no_hp: '081300010002' },
-    { id: 5, nama: 'Budi Santoso', email: 'budi.santoso@student.unand.ac.id', role: 'penghuni', nim: '2311521002', asal: 'Pariaman', jekel: 'L', no_hp: '081300010003' },
-    { id: 6, nama: 'Annisa Rahma', email: 'annisa.rahma@student.unand.ac.id', role: 'penghuni', nim: '2311522003', asal: 'Padang Panjang', jekel: 'P', no_hp: '081300010004' }
-  ]);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const [filterRole, setFilterRole] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -36,11 +30,13 @@ export default function KelolaUser() {
 
   // Ambil data users dari backend (Kecualikan admin karena admin sistem bersifat tunggal)
   const loadUsers = () => {
+    setLoading(true);
     api.getUsers().then((res) => {
-      if (res && res.data && res.data.length > 0) {
+      if (res && res.data) {
         setUsers(res.data.filter(u => u.role !== 'admin'));
       }
-    }).catch(() => {});
+    }).catch(() => {})
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
@@ -202,7 +198,13 @@ export default function KelolaUser() {
               </tr>
             </thead>
             <tbody>
-              {filteredUsers.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={7} style={{ padding: '32px', textAlign: 'center', color: 'var(--color-neutral)' }}>
+                    Memuat data pengguna dari database...
+                  </td>
+                </tr>
+              ) : filteredUsers.length === 0 ? (
                 <tr>
                   <td colSpan={7} style={{ padding: '32px', textAlign: 'center', color: 'var(--color-neutral)' }}>
                     Tidak ada data pengguna yang sesuai dengan kriteria pencarian.

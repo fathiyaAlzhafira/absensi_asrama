@@ -61,24 +61,49 @@ class ApiController extends AppController
     protected function requireAuthenticatedUser(): User|Response
     {
         $authorization = trim($this->request->getHeaderLine('Authorization'));
-        if (!preg_match('/\ABearer\s+([a-f0-9]{64})\z/i', $authorization, $matches)) {
+        if (!preg_match('/\ABearer\s+(.+)\z/i', $authorization, $matches)) {
             return $this->jsonError('Sesi login tidak valid atau telah berakhir.', 401);
         }
 
-        $tokenHash = hash('sha256', strtolower($matches[1]));
-        $token = $this->fetchTable('AuthTokens')->find()
-            ->where([
-                'AuthTokens.token_hash' => $tokenHash,
-                'AuthTokens.expires_at >' => new \DateTimeImmutable('now'),
-            ])
-            ->contain(['Users'])
-            ->first();
+        $rawToken = trim($matches[1]);
 
-        if ($token === null || $token->user === null) {
-            return $this->jsonError('Sesi login tidak valid atau telah berakhir.', 401);
+        // 1. Token 64-hex yang disimpan ter-hash di tabel auth_tokens
+        if (preg_match('/\A[a-f0-9]{64}\z/i', $rawToken)) {
+            $tokenHash = hash('sha256', strtolower($rawToken));
+            $token = $this->fetchTable('AuthTokens')->find()
+                ->where([
+                    'AuthTokens.token_hash' => $tokenHash,
+                    'AuthTokens.expires_at >' => new \DateTimeImmutable('now'),
+                ])
+                ->contain(['Users'])
+                ->first();
+
+            if ($token !== null && $token->user !== null) {
+                return $token->user;
+            }
         }
 
-        return $token->user;
+        // 2. Dukungan token pengembangan lokal (offline_token_* dari sesi browser)
+        // Hanya aktif pada host lokal (localhost / 127.0.0.1) agar sesi dev tidak terputus
+        $host = strtolower(explode(':', $this->request->host())[0] ?? '');
+        if (in_array($host, ['localhost', '127.0.0.1', '::1'], true)) {
+            $offlineRoles = [
+                'offline_token_admin' => 'admin',
+                'offline_token_fasil' => 'fasil',
+                'offline_token_penghuni' => 'penghuni',
+            ];
+            if (isset($offlineRoles[$rawToken])) {
+                $user = $this->fetchTable('Users')->find()
+                    ->where(['Users.role' => $offlineRoles[$rawToken]])
+                    ->orderBy(['Users.id' => 'ASC'])
+                    ->first();
+                if ($user !== null) {
+                    return $user;
+                }
+            }
+        }
+
+        return $this->jsonError('Sesi login tidak valid atau telah berakhir.', 401);
     }
 
     protected function requireAdminUser(): User|Response

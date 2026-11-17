@@ -2643,12 +2643,47 @@ a:hover {
 }
 
 .resident-history-desktop table tbody tr:hover {
-  background: #f7faf8;
+  background: var(--color-surface-l2);
 }
 
 .resident-history-desktop th {
   font-size: 12px;
   letter-spacing: .03em;
+}
+
+.resident-history-filter-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  align-items: end;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+}
+
+.resident-clean-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 14px;
+}
+
+.resident-clean-table th,
+.resident-clean-table td {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.resident-clean-table th {
+  background: var(--color-surface-l2);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.resident-clean-table tbody tr:last-child td {
+  border-bottom: 0;
 }
 
 .resident-subpage-back {

@@ -50,10 +50,38 @@ class PresensisController extends ApiController
             ->where(['user_id' => $user->id, 'tanggal' => $today, 'sesi' => 'malam'])
             ->first();
 
+        // Periksa apakah ada izin yang disetujui untuk sesi hari ini
+        $izinsTable = $this->fetchTable('Izins');
+        $approvedIzins = $izinsTable->find()
+            ->where([
+                'user_id' => $user->id,
+                'status' => 'disetujui',
+                'tanggal_mulai <=' => $today,
+                'tanggal_selesai >=' => $today
+            ])
+            ->all();
+
+        $subuhIzin = false;
+        $malamIzin = false;
+        foreach ($approvedIzins as $iz) {
+            if ($iz->sesi === 'semua' || empty($iz->sesi)) {
+                $subuhIzin = true;
+                $malamIzin = true;
+            } elseif ($iz->sesi === 'subuh') {
+                $subuhIzin = true;
+            } elseif ($iz->sesi === 'malam') {
+                $malamIzin = true;
+            }
+        }
+
+        $subuhData = $subuh ? ['status' => $subuh->status, 'waktu' => $subuh->waktu->format('H:i')] : ($subuhIzin ? ['status' => 'izin', 'waktu' => 'Izin Disetujui'] : null);
+        $malamData = $malam ? ['status' => $malam->status, 'waktu' => $malam->waktu->format('H:i')] : ($malamIzin ? ['status' => 'izin', 'waktu' => 'Izin Disetujui'] : null);
+
         return $this->jsonSuccess([
             'today' => $today,
-            'subuh' => $subuh ? ['status' => $subuh->status, 'waktu' => $subuh->waktu->format('H:i')] : null,
-            'malam' => $malam ? ['status' => $malam->status, 'waktu' => $malam->waktu->format('H:i')] : null
+            'subuh' => $subuhData,
+            'malam' => $malamData,
+            'jadwal' => $this->scheduleConfig(),
         ]);
     }
 
@@ -91,9 +119,10 @@ class PresensisController extends ApiController
         $data = $this->request->getData();
         $now = new \DateTimeImmutable('now', new \DateTimeZone('Asia/Jakarta'));
         $minutes = ((int)$now->format('G') * 60) + (int)$now->format('i');
+        $schedule = $this->scheduleBounds();
         $sesi = match (true) {
-            $minutes >= 240 && $minutes < 360 => 'subuh',
-            $minutes >= 1080 && $minutes < 1230 => 'malam',
+            $minutes >= $schedule['subuh_mulai'] && $minutes < $schedule['subuh_selesai'] => 'subuh',
+            $minutes >= $schedule['malam_mulai'] && $minutes < $schedule['malam_selesai'] => 'malam',
             default => null,
         };
 
@@ -226,4 +255,61 @@ class PresensisController extends ApiController
         return $this->response->withFile($photoPath, ['download' => false]);
     }
 
+    /**
+     * @return array<string, string>
+     */
+    private function scheduleConfig(): array
+    {
+        $defaults = [
+            'jam_subuh_mulai' => '04:00',
+            'jam_subuh_selesai' => '06:00',
+            'jam_malam_mulai' => '18:00',
+            'jam_malam_selesai' => '20:30',
+        ];
+        try {
+            $record = $this->fetchTable('PengaturanPresensi')->find()->orderBy(['id' => 'ASC'])->first();
+            if ($record === null) {
+                return $defaults;
+            }
+            $fmt = static function (mixed $val, string $fallback): string {
+                if ($val instanceof \DateTimeInterface) {
+                    return $val->format('H:i');
+                }
+                if (preg_match('/\A([01]\d|2[0-3]):([0-5]\d)/', str_replace('.', ':', (string)$val), $m)) {
+                    return $m[1] . ':' . $m[2];
+                }
+
+                return $fallback;
+            };
+
+            return [
+                'jam_subuh_mulai' => $fmt($record->jam_subuh_mulai, $defaults['jam_subuh_mulai']),
+                'jam_subuh_selesai' => $fmt($record->jam_subuh_selesai, $defaults['jam_subuh_selesai']),
+                'jam_malam_mulai' => $fmt($record->jam_malam_mulai, $defaults['jam_malam_mulai']),
+                'jam_malam_selesai' => $fmt($record->jam_malam_selesai, $defaults['jam_malam_selesai']),
+            ];
+        } catch (\Throwable) {
+            return $defaults;
+        }
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function scheduleBounds(): array
+    {
+        $cfg = $this->scheduleConfig();
+        $toMin = static function (string $hhmm): int {
+            [$h, $m] = array_map('intval', explode(':', $hhmm));
+
+            return ($h * 60) + $m;
+        };
+
+        return [
+            'subuh_mulai' => $toMin($cfg['jam_subuh_mulai']),
+            'subuh_selesai' => $toMin($cfg['jam_subuh_selesai']),
+            'malam_mulai' => $toMin($cfg['jam_malam_mulai']),
+            'malam_selesai' => $toMin($cfg['jam_malam_selesai']),
+        ];
+    }
 }

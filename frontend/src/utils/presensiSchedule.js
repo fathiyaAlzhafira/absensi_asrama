@@ -1,7 +1,84 @@
-const jadwalPresensi = [
-  { id: 'subuh', label: 'Subuh', mulai: 4 * 60, selesai: 6 * 60, jamMulai: '04.00', jamSelesai: '06.00' },
-  { id: 'malam', label: 'Malam', mulai: 18 * 60, selesai: 20 * 60 + 30, jamMulai: '18.00', jamSelesai: '20.30' }
-];
+const DEFAULT_SCHEDULE = {
+  jam_subuh_mulai: '04:00',
+  jam_subuh_selesai: '06:00',
+  jam_malam_mulai: '18:00',
+  jam_malam_selesai: '20:30'
+};
+
+const STORAGE_KEY = 'asrama_presensi_schedule';
+
+function normalizeTime(value, fallback) {
+  const clean = String(value || '').trim().replace('.', ':');
+  const match = clean.match(/^([01]\d|2[0-3]):([0-5]\d)/);
+  return match ? `${match[1]}:${match[2]}` : fallback;
+}
+
+function toMinutes(hhmm) {
+  const [hour, minute] = hhmm.split(':').map(Number);
+  return (hour * 60) + minute;
+}
+
+export function getStoredPresensiSchedule() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return DEFAULT_SCHEDULE;
+    const parsed = JSON.parse(raw);
+    return {
+      jam_subuh_mulai: normalizeTime(parsed?.jam_subuh_mulai, DEFAULT_SCHEDULE.jam_subuh_mulai),
+      jam_subuh_selesai: normalizeTime(parsed?.jam_subuh_selesai, DEFAULT_SCHEDULE.jam_subuh_selesai),
+      jam_malam_mulai: normalizeTime(parsed?.jam_malam_mulai, DEFAULT_SCHEDULE.jam_malam_selesai ? parsed.jam_malam_mulai : DEFAULT_SCHEDULE.jam_malam_mulai),
+      jam_malam_selesai: normalizeTime(parsed?.jam_malam_selesai, DEFAULT_SCHEDULE.jam_malam_selesai)
+    };
+  } catch {
+    return DEFAULT_SCHEDULE;
+  }
+}
+
+export function savePresensiSchedule(config) {
+  const normalized = {
+    jam_subuh_mulai: normalizeTime(config?.jam_subuh_mulai, DEFAULT_SCHEDULE.jam_subuh_mulai),
+    jam_subuh_selesai: normalizeTime(config?.jam_subuh_selesai, DEFAULT_SCHEDULE.jam_subuh_selesai),
+    jam_malam_mulai: normalizeTime(config?.jam_malam_mulai, DEFAULT_SCHEDULE.jam_malam_mulai),
+    jam_malam_selesai: normalizeTime(config?.jam_malam_selesai, DEFAULT_SCHEDULE.jam_malam_selesai)
+  };
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+    window.dispatchEvent(new CustomEvent('presensi-schedule-updated', { detail: normalized }));
+  } catch {
+    // Abaikan jika storage penuh
+  }
+  return normalized;
+}
+
+export function buildJadwalPresensi(config) {
+  const activeConfig = config
+    ? {
+        jam_subuh_mulai: normalizeTime(config.jam_subuh_mulai, DEFAULT_SCHEDULE.jam_subuh_mulai),
+        jam_subuh_selesai: normalizeTime(config.jam_subuh_selesai, DEFAULT_SCHEDULE.jam_subuh_selesai),
+        jam_malam_mulai: normalizeTime(config.jam_malam_mulai, DEFAULT_SCHEDULE.jam_malam_mulai),
+        jam_malam_selesai: normalizeTime(config.jam_malam_selesai, DEFAULT_SCHEDULE.jam_malam_selesai)
+      }
+    : getStoredPresensiSchedule();
+
+  return [
+    {
+      id: 'subuh',
+      label: 'Subuh',
+      mulai: toMinutes(activeConfig.jam_subuh_mulai),
+      selesai: toMinutes(activeConfig.jam_subuh_selesai),
+      jamMulai: activeConfig.jam_subuh_mulai,
+      jamSelesai: activeConfig.jam_subuh_selesai
+    },
+    {
+      id: 'malam',
+      label: 'Malam',
+      mulai: toMinutes(activeConfig.jam_malam_mulai),
+      selesai: toMinutes(activeConfig.jam_malam_selesai),
+      jamMulai: activeConfig.jam_malam_mulai,
+      jamSelesai: activeConfig.jam_malam_selesai
+    }
+  ];
+}
 
 function getWibMinutes(date) {
   const parts = new Intl.DateTimeFormat('en-GB', {
@@ -12,7 +89,7 @@ function getWibMinutes(date) {
   }).formatToParts(date);
   const hour = Number(parts.find((part) => part.type === 'hour').value);
   const minute = Number(parts.find((part) => part.type === 'minute').value);
-  return hour * 60 + minute;
+  return (hour * 60) + minute;
 }
 
 export function getWibDateKey(date) {
@@ -26,7 +103,8 @@ export function getWibDateKey(date) {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
-export function getPresensiScheduleState(date = new Date()) {
+export function getPresensiScheduleState(date = new Date(), customSchedule = null) {
+  const jadwalPresensi = buildJadwalPresensi(customSchedule);
   const minutes = getWibMinutes(date);
   const activeSession = jadwalPresensi.find(
     (session) => minutes >= session.mulai && minutes < session.selesai
@@ -40,5 +118,5 @@ export function getPresensiScheduleState(date = new Date()) {
     nextSession = { ...session, besok: !isBeforeSubuh && !isBeforeMalam };
   }
 
-  return { activeSession, nextSession };
+  return { activeSession, nextSession, jadwalPresensi };
 }

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import Card from '../common/Card';
 import Badge from '../common/Badge';
 import Button from '../common/Button';
-import { Clock, FileText } from 'lucide-react';
+import { Clock, ExternalLink, FileText, X, Download, AlertCircle } from 'lucide-react';
 import { api } from '../../services/api';
 
 const formatTanggal = (tanggal) => {
@@ -28,11 +28,33 @@ const statusLabel = (status) => ({
   ditolak: 'Ditolak'
 }[status] || 'Menunggu');
 
+const sesiLabel = (sesi) => {
+  if (sesi === 'malam') return 'Sesi Malam';
+  if (sesi === 'subuh') return 'Sesi Subuh';
+  return 'Semua Sesi';
+};
+
+const getFileUrl = (filePath) => {
+  if (!filePath) return '';
+  if (filePath.startsWith('http://') || filePath.startsWith('https://')) return filePath;
+  if (filePath.startsWith('/')) return filePath;
+  return `/${filePath}`;
+};
+
+const isImageFile = (filePath) => {
+  if (!filePath) return false;
+  const lower = filePath.toLowerCase();
+  return lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.png');
+};
+
+const isPdfFile = (filePath) => Boolean(filePath && filePath.toLowerCase().endsWith('.pdf'));
+
 export default function RiwayatStatusIzin({ refreshKey = 0 }) {
   const [daftarIzin, setDaftarIzin] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [retryKey, setRetryKey] = useState(0);
+  const [previewFile, setPreviewFile] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -69,7 +91,7 @@ export default function RiwayatStatusIzin({ refreshKey = 0 }) {
         <div className="status-izin-header">
           <div>
             <span className="text-label" style={{ color: 'var(--color-primary)' }}>PERIZINAN</span>
-            <h2 className="text-card-title">Riwayat izin & status</h2>
+            <h2 className="text-card-title">Riwayat izin &amp; status</h2>
             <p className="text-body">Lihat pengajuan Anda dan catatan dari fasilitator.</p>
           </div>
         </div>
@@ -121,7 +143,7 @@ export default function RiwayatStatusIzin({ refreshKey = 0 }) {
                   <h3 className="text-card-title status-izin-type-title">
                     {item.jenis_izin ? item.jenis_izin.replace(/_/g, ' ') : 'Izin'}
                   </h3>
-                  <span className="text-small">Pengajuan izin</span>
+                  <span className="text-small">{sesiLabel(item.sesi)}</span>
                 </div>
               </div>
               <Badge variant={statusVariant(item.status)}>{statusLabel(item.status)}</Badge>
@@ -129,7 +151,12 @@ export default function RiwayatStatusIzin({ refreshKey = 0 }) {
 
             <div className="status-izin-period">
               <Clock size={15} />
-              <span>{formatTanggal(item.tanggal_mulai)} — {formatTanggal(item.tanggal_selesai)}</span>
+              <span>
+                {formatTanggal(item.tanggal_mulai)}
+                {item.tanggal_selesai && item.tanggal_selesai !== item.tanggal_mulai
+                  ? ` — ${formatTanggal(item.tanggal_selesai)}`
+                  : ''}
+              </span>
             </div>
 
             <p className="text-body-white status-izin-description">
@@ -152,11 +179,77 @@ export default function RiwayatStatusIzin({ refreshKey = 0 }) {
                     <strong>{item.bukti_file.split(/[\\/]/).pop()}</strong>
                   </span>
                 </div>
+                <Button size="sm" variant="ghost" icon={ExternalLink} onClick={() => setPreviewFile(item.bukti_file)}>
+                  Buka berkas
+                </Button>
               </div>
             )}
           </Card>
         ))}
       </div>
+
+      {previewFile && (
+        <div
+          className="resident-photo-modal"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setPreviewFile(null);
+          }}
+        >
+          <div className="resident-photo-dialog" style={{ width: 'min(640px, 100%)' }}>
+            <div className="resident-photo-header">
+              <h2 className="text-card-title">Pratinjau Berkas Lampiran</h2>
+              <button
+                type="button"
+                className="resident-camera-close"
+                onClick={() => setPreviewFile(null)}
+                aria-label="Tutup pratinjau"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{
+              backgroundColor: 'var(--color-surface-l2)',
+              borderRadius: '10px',
+              padding: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: '220px'
+            }}>
+              {isImageFile(previewFile) ? (
+                <img src={getFileUrl(previewFile)} alt="Bukti izin" />
+              ) : isPdfFile(previewFile) ? (
+                <iframe
+                  src={getFileUrl(previewFile)}
+                  title="Pratinjau PDF"
+                  style={{ width: '100%', height: '58vh', border: 'none', borderRadius: '8px' }}
+                />
+              ) : (
+                <div style={{ textAlign: 'center', padding: '24px' }}>
+                  <AlertCircle size={32} color="var(--color-neutral)" style={{ margin: '0 auto 8px' }} />
+                  <p className="text-body">{previewFile.split(/[\\/]/).pop()}</p>
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <span className="text-small">{previewFile.split(/[\\/]/).pop()}</span>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <a href={getFileUrl(previewFile)} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
+                  <Button size="sm" variant="secondary" icon={Download}>
+                    Buka di tab baru
+                  </Button>
+                </a>
+                <Button size="sm" variant="primary" onClick={() => setPreviewFile(null)}>
+                  Tutup
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

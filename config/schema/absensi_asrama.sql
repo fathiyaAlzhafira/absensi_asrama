@@ -103,6 +103,7 @@ CREATE TABLE `izins` (
     `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `user_id` INT UNSIGNED NOT NULL COMMENT 'Penghuni yang mengajukan izin',
     `jenis_izin` ENUM('sakit', 'pulang_kampung', 'kegiatan_kampus', 'keperluan_keluarga', 'lainnya') NOT NULL,
+    `sesi` ENUM('semua', 'subuh', 'malam') NOT NULL DEFAULT 'semua' COMMENT 'Sesi izin: semua (subuh & malam), subuh saja, atau malam saja',
     `tanggal_mulai` DATE NOT NULL COMMENT 'Mulai tanggal izin',
     `tanggal_selesai` DATE NOT NULL COMMENT 'Sampai tanggal izin',
     `keterangan` TEXT NOT NULL COMMENT 'Alasan pengajuan izin',

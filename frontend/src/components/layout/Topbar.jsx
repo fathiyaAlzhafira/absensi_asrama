@@ -1,13 +1,35 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { Clock, MapPin, Menu, User as UserIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { api } from '../../services/api';
+import { getStoredPresensiSchedule, savePresensiSchedule } from '../../utils/presensiSchedule';
 
 export default function Topbar({ onMenuClick }) {
   const { user } = useAuth();
+  const [schedule, setSchedule] = useState(() => getStoredPresensiSchedule());
+
+  useEffect(() => {
+    let active = true;
+    api.getPengaturanPresensi()
+      .then((res) => {
+        if (!active || !res?.data) return;
+        setSchedule(savePresensiSchedule(res.data));
+      })
+      .catch(() => {});
+
+    const onUpdated = (event) => {
+      if (event.detail) setSchedule(event.detail);
+    };
+    window.addEventListener('presensi-schedule-updated', onUpdated);
+    return () => {
+      active = false;
+      window.removeEventListener('presensi-schedule-updated', onUpdated);
+    };
+  }, []);
 
   return (
-    <header style={{
+    <header className="topbar-header" style={{
       minHeight: '64px',
       backgroundColor: 'var(--color-surface-l1)',
       borderBottom: '1px solid var(--color-border)',
@@ -19,7 +41,8 @@ export default function Topbar({ onMenuClick }) {
       top: 0,
       zIndex: 90,
       gap: '12px',
-      flexWrap: 'nowrap'
+      flexWrap: 'nowrap',
+      overflow: 'hidden'
     }}>
       {/* Sisi Kiri: Info Sesi Presensi & Lokasi */}
       <div style={{
@@ -27,7 +50,8 @@ export default function Topbar({ onMenuClick }) {
         alignItems: 'center',
         gap: '10px',
         minWidth: 0,
-        flexShrink: 1
+        flex: '1 1 auto',
+        overflow: 'hidden'
       }}>
         <button
           type="button"
@@ -48,14 +72,24 @@ export default function Topbar({ onMenuClick }) {
           color: 'var(--color-text-secondary)',
           border: '1px solid var(--color-border)',
           whiteSpace: 'nowrap',
+          maxWidth: '100%',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
           flexShrink: 1
         }}>
           <Clock size={14} color="var(--color-primary)" style={{ flexShrink: 0 }} />
-          <span className="sesi-full-text">
-            Sesi: <strong style={{ color: 'var(--color-text-primary)' }}>Subuh (04.00-06.00)</strong> & <strong style={{ color: 'var(--color-text-primary)' }}>Malam (18.00-20.30)</strong>
+          <span className="sesi-full-text" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            Sesi:{' '}
+            <strong style={{ color: 'var(--color-text-primary)' }}>
+              Subuh ({schedule.jam_subuh_mulai}–{schedule.jam_subuh_selesai})
+            </strong>{' '}
+            &amp;{' '}
+            <strong style={{ color: 'var(--color-text-primary)' }}>
+              Malam ({schedule.jam_malam_mulai}–{schedule.jam_malam_selesai})
+            </strong>
           </span>
           <span className="sesi-compact-text">
-            <strong style={{ color: 'var(--color-text-primary)' }}>Subuh & Malam</strong>
+            Sesi: <strong style={{ color: 'var(--color-text-primary)' }}>Subuh &amp; Malam</strong>
           </span>
         </div>
 
@@ -65,14 +99,15 @@ export default function Topbar({ onMenuClick }) {
           gap: '6px',
           fontSize: '12px',
           color: 'var(--color-neutral)',
-          whiteSpace: 'nowrap'
+          whiteSpace: 'nowrap',
+          flexShrink: 0
         }}>
           <MapPin size={13} color="var(--color-warning)" style={{ flexShrink: 0 }} />
           <span>Asrama Unand Limau Manis</span>
         </div>
       </div>
 
-      {/* Sisi Kanan: Akun Pengguna (Avatar-only ketika layar kecil agar tidak menimpa Sesi) */}
+      {/* Sisi Kanan: Akun Pengguna */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -90,12 +125,13 @@ export default function Topbar({ onMenuClick }) {
             backgroundColor: 'var(--color-surface-l2)',
             border: '1px solid var(--color-border)',
             transition: 'all var(--transition-fast)',
-            whiteSpace: 'nowrap'
+            whiteSpace: 'nowrap',
+            textDecoration: 'none'
           }}
         >
           <div style={{
-            width: '30px',
-            height: '30px',
+            width: '32px',
+            height: '32px',
             borderRadius: '50%',
             backgroundColor: 'var(--color-secondary)',
             display: 'flex',
@@ -133,7 +169,11 @@ export default function Topbar({ onMenuClick }) {
 
       <style>{`
         .topbar-profile-chip {
-          padding: 5px 12px;
+          padding: 4px 12px 4px 5px;
+        }
+        .topbar-profile-chip:hover {
+          background-color: var(--color-surface-l3) !important;
+          border-color: var(--color-neutral) !important;
         }
         .mobile-menu-toggle {
           display: none;
@@ -155,13 +195,19 @@ export default function Topbar({ onMenuClick }) {
           display: inline;
         }
 
+        @media (max-width: 1080px) {
+          .hide-on-tablet {
+            display: none !important;
+          }
+        }
+
         @media (max-width: 768px) {
           .mobile-menu-toggle {
             display: inline-flex;
           }
-          .hide-on-tablet {
-            display: none !important;
-          }
+        }
+
+        @media (max-width: 900px) {
           .sesi-full-text {
             display: none !important;
           }
@@ -172,8 +218,17 @@ export default function Topbar({ onMenuClick }) {
             display: none !important;
           }
           .topbar-profile-chip {
-            padding: 4px !important;
+            padding: 3px !important;
             border-radius: 50% !important;
+            width: 38px !important;
+            height: 38px !important;
+            justify-content: center !important;
+          }
+        }
+
+        @media (max-width: 520px) {
+          .topbar-header {
+            padding: 8px 12px !important;
           }
         }
       `}</style>

@@ -3,7 +3,7 @@ import Card from '../../components/common/Card';
 import Badge from '../../components/common/Badge';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
-import { CalendarDays, ChevronLeft, Filter } from 'lucide-react';
+import { ChevronLeft, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api } from '../../services/api';
 
@@ -24,9 +24,25 @@ const variantStatus = (status) => {
   return 'neutral';
 };
 
+const formatTanggal = (tanggal) => {
+  if (!tanggal) return '-';
+  const date = new Date(`${String(tanggal).slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return String(tanggal);
+  return new Intl.DateTimeFormat('id-ID', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric'
+  }).format(date);
+};
+
+const formatWaktu = (waktu) => {
+  if (!waktu || waktu === '00:00:00') return '--:--';
+  return String(waktu).slice(0, 5);
+};
+
 export default function RiwayatPresensi() {
   const [selectedPhoto, setSelectedPhoto] = useState(null);
-  const [photoLoading, setPhotoLoading] = useState(false);
+  const [photoLoadingId, setPhotoLoadingId] = useState(null);
   const [photoError, setPhotoError] = useState('');
   const [riwayat, setRiwayat] = useState([]);
   const [filterMode, setFilterMode] = useState('all');
@@ -88,68 +104,68 @@ export default function RiwayatPresensi() {
 
   const openPhoto = async (id) => {
     setPhotoError('');
-    setPhotoLoading(true);
+    setPhotoLoadingId(id);
     try {
       setSelectedPhoto(await api.getPresensiPhoto(id));
     } catch (requestError) {
       setPhotoError(requestError.message || 'Foto presensi gagal dimuat.');
     } finally {
-      setPhotoLoading(false);
+      setPhotoLoadingId(null);
     }
   };
 
   return (
     <div className="resident-page resident-history-page">
-      <div className="resident-page-heading" style={{ marginBottom: '20px' }}>
-        <div className="resident-subpage-banner">
-          <Link to="/penghuni/dashboard" className="resident-subpage-back" aria-label="Kembali ke beranda" title="Kembali ke beranda">
-            <ChevronLeft size={22} />
-          </Link>
-          <h1 className="resident-subpage-title">Riwayat Absensi</h1>
-        </div>
-        <p className="text-body resident-subpage-description">Ringkasan dan detail kehadiran Anda di asrama.</p>
-      </div>
-
-      <div className="resident-history-stats">
-        <Card hoverable={false} className="resident-history-stat">
-          <span className="resident-history-stat-icon hadir"><CalendarDays size={18} /></span>
-          <span className="resident-history-stat-label">Hadir</span>
-          <strong>{statistik.hadir}</strong>
-        </Card>
-        <Card hoverable={false} className="resident-history-stat">
-          <span className="resident-history-stat-icon izin"><CalendarDays size={18} /></span>
-          <span className="resident-history-stat-label">Izin</span>
-          <strong>{statistik.izin}</strong>
-        </Card>
-        <Card hoverable={false} className="resident-history-stat">
-          <span className="resident-history-stat-icon alpa"><CalendarDays size={18} /></span>
-          <span className="resident-history-stat-label">Alfa</span>
-          <strong>{statistik.alpa}</strong>
-        </Card>
-        <Card hoverable={false} className="resident-history-stat">
-          <span className="resident-history-stat-icon terlambat"><CalendarDays size={18} /></span>
-          <span className="resident-history-stat-label">Terlambat</span>
-          <strong>{statistik.terlambat}</strong>
-        </Card>
-      </div>
-
-      <Card hoverable={false} className="resident-history-filter-card">
-        <div className="resident-history-filter-heading">
-          <div className="resident-dashboard-section-icon"><Filter size={18} /></div>
-          <div>
-            <h2 className="text-card-title">Filter riwayat</h2>
-            <p className="text-small">Pilih periode atau rentang tanggal.</p>
+      <div className="resident-permission-heading">
+        <div className="resident-page-heading">
+          <div className="resident-subpage-banner">
+            <Link to="/penghuni/dashboard" className="resident-subpage-back" aria-label="Kembali ke beranda" title="Kembali ke beranda">
+              <ChevronLeft size={22} />
+            </Link>
+            <h1 className="resident-subpage-title">Riwayat Absensi</h1>
           </div>
         </div>
-        <div className="resident-history-filter-controls">
+      </div>
+
+      {/* Ringkasan Statistik & Filter dalam Card yang Seragam */}
+      <Card hoverable={false} className="resident-permission-summary-card">
+        <div className="status-izin-header">
+          <div>
+            <span className="text-label" style={{ color: 'var(--color-primary)' }}>RINGKASAN KEHADIRAN</span>
+            <h2 className="text-card-title">Statistik &amp; Filter Riwayat</h2>
+            <p className="text-body">Rekap kehadiran presensi Subuh dan Malam Anda di asrama.</p>
+          </div>
+        </div>
+
+        <div className="status-izin-summary" style={{ marginBottom: '16px' }}>
+          <div className="status-summary-item">
+            <span className="text-small">Hadir</span>
+            <strong className="status-summary-approved">{statistik.hadir}</strong>
+          </div>
+          <div className="status-summary-item">
+            <span className="text-small">Izin</span>
+            <strong style={{ color: 'var(--color-warning)' }}>{statistik.izin}</strong>
+          </div>
+          <div className="status-summary-item">
+            <span className="text-small">Terlambat</span>
+            <strong style={{ color: 'var(--color-warning)' }}>{statistik.terlambat}</strong>
+          </div>
+          <div className="status-summary-item">
+            <span className="text-small">Alfa</span>
+            <strong style={{ color: 'var(--color-error)' }}>{statistik.alpa}</strong>
+          </div>
+        </div>
+
+        <div className="resident-history-filter-bar">
           <label className="resident-filter-mode">
-            <span>Jenis filter</span>
+            <span>Periode</span>
             <select value={filterMode} onChange={(e) => setFilterMode(e.target.value)}>
               <option value="all">Semua periode</option>
               <option value="month">Berdasarkan bulan</option>
               <option value="range">Rentang tanggal</option>
             </select>
           </label>
+
           {filterMode === 'month' && (
             <Input
               type="month"
@@ -158,6 +174,7 @@ export default function RiwayatPresensi() {
               onChange={(e) => setFilterMonth(e.target.value)}
             />
           )}
+
           {filterMode === 'range' && (
             <>
               <Input
@@ -174,9 +191,12 @@ export default function RiwayatPresensi() {
               />
             </>
           )}
-          <Button size="md" variant="secondary" className="resident-action-button" onClick={resetFilter}>
-            Reset
-          </Button>
+
+          {filterMode !== 'all' && (
+            <Button size="md" variant="secondary" onClick={resetFilter} style={{ height: '42px', textTransform: 'none', letterSpacing: 0 }}>
+              Reset Filter
+            </Button>
+          )}
         </div>
       </Card>
 
@@ -184,96 +204,153 @@ export default function RiwayatPresensi() {
         <p className="resident-history-error">Tanggal awal tidak boleh melewati tanggal akhir.</p>
       )}
       {error && <p className="resident-history-error">{error}</p>}
+      {photoError && <p className="resident-history-error" role="alert">{photoError}</p>}
 
+      {/* Tabel Desktop yang Bersih */}
       <Card hoverable={false} className="resident-history-desktop" style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+          <table className="resident-clean-table">
             <thead>
-              <tr style={{ backgroundColor: 'var(--color-surface-l2)', color: 'var(--color-neutral)', borderBottom: '1px solid var(--color-border)' }}>
-                <th style={{ padding: '16px' }}>Tanggal</th>
-                <th style={{ padding: '16px' }}>Sesi</th>
-                <th style={{ padding: '16px' }}>Waktu Absen</th>
-                <th style={{ padding: '16px' }}>Status</th>
-                <th style={{ padding: '16px' }}>Koordinat GPS</th>
-                <th style={{ padding: '16px' }}>Keterangan</th>
-                <th style={{ padding: '16px', textAlign: 'center' }}>Foto Selfie</th>
+              <tr>
+                <th>Tanggal</th>
+                <th>Sesi</th>
+                <th>Waktu</th>
+                <th>Status</th>
+                <th>Lokasi</th>
+                <th>Keterangan</th>
+                <th style={{ textAlign: 'right' }}>Foto Bukti</th>
               </tr>
             </thead>
             <tbody>
-              {riwayatTersaring.map((row) => (
-                <tr key={row.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                  <td style={{ padding: '16px', color: 'var(--color-text-primary)', fontWeight: '600' }}>{row.tanggal}</td>
-                  <td style={{ padding: '16px' }}>
-                    <Badge variant={row.sesi === 'subuh' ? 'default' : 'warning'} size="sm">{row.sesi?.toUpperCase() || '-'}</Badge>
-                  </td>
-                  <td style={{ padding: '16px', color: 'var(--color-neutral)' }}>
-                    {row.waktu && row.waktu !== '00:00:00' ? row.waktu : '-'}
-                  </td>
-                  <td style={{ padding: '16px' }}>
-                    <Badge variant={variantStatus(row.status)}>{row.status || 'Tidak diketahui'}</Badge>
-                  </td>
-                  <td style={{ padding: '16px', fontFamily: 'var(--font-code)', fontSize: '12px', color: 'var(--color-neutral)' }}>
-                    {row.lat && row.long ? `${row.lat}, ${row.long}` : '-'}
-                  </td>
-                  <td style={{ padding: '16px', color: 'var(--color-neutral)' }}>{row.keterangan || '-'}</td>
-                  <td style={{ padding: '16px', textAlign: 'center' }}>
-                    {row.foto_wajah ? (
-                      <Button size="md" variant="ghost" className="resident-action-button" disabled={photoLoading} onClick={() => openPhoto(row.id)}>
-                        {photoLoading ? 'Memuat...' : 'Lihat Foto'}
-                      </Button>
-                    ) : <span style={{ color: 'var(--color-neutral)' }}>-</span>}
-                  </td>
+              {loading ? (
+                <tr>
+                  <td colSpan="7" className="resident-history-table-empty">Memuat riwayat presensi...</td>
                 </tr>
-              ))}
-              {!loading && !error && !rentangTidakValid && riwayatTersaring.length === 0 && (
-                <tr><td colSpan="7" className="resident-history-table-empty">Tidak ada data pada periode ini.</td></tr>
+              ) : !error && !rentangTidakValid && riwayatTersaring.length === 0 ? (
+                <tr>
+                  <td colSpan="7" className="resident-history-table-empty">Tidak ada data presensi pada periode ini.</td>
+                </tr>
+              ) : (
+                riwayatTersaring.map((row) => (
+                  <tr key={row.id}>
+                    <td style={{ fontWeight: 600, color: 'var(--color-text-primary)', whiteSpace: 'nowrap' }}>
+                      {formatTanggal(row.tanggal)}
+                    </td>
+                    <td>
+                      <Badge variant={row.sesi === 'subuh' ? 'neutral' : 'warning'} size="sm">
+                        {row.sesi ? `Sesi ${row.sesi}` : '-'}
+                      </Badge>
+                    </td>
+                    <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-primary)' }}>
+                      {formatWaktu(row.waktu)} WIB
+                    </td>
+                    <td>
+                      <Badge variant={variantStatus(row.status)} size="sm">
+                        {row.status || 'Tercatat'}
+                      </Badge>
+                    </td>
+                    <td style={{ color: 'var(--color-text-secondary)', fontSize: '13px' }}>
+                      {row.lat && row.long ? (
+                        <span title={`${row.lat}, ${row.long}`}>Terverifikasi di area gedung</span>
+                      ) : (
+                        '-'
+                      )}
+                    </td>
+                    <td style={{ color: 'var(--color-text-secondary)' }}>
+                      {row.keterangan || 'Presensi di asrama'}
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      {row.foto_wajah ? (
+                        <button
+                          type="button"
+                          className="admin-secondary-button"
+                          style={{ minHeight: '34px', padding: '5px 12px', fontSize: '12px' }}
+                          disabled={photoLoadingId === row.id}
+                          onClick={() => openPhoto(row.id)}
+                        >
+                          {photoLoadingId === row.id ? 'Memuat...' : 'Lihat Foto'}
+                        </button>
+                      ) : (
+                        <span style={{ color: 'var(--color-neutral)' }}>-</span>
+                      )}
+                    </td>
+                  </tr>
+                ))
               )}
-              {loading && <tr><td colSpan="7" className="resident-history-table-empty">Memuat riwayat...</td></tr>}
             </tbody>
           </table>
         </div>
       </Card>
 
+      {/* Daftar Kartu Mobile yang Bersih */}
       <div className="resident-history-mobile">
-        {riwayatTersaring.map((row) => (
-          <Card key={row.id} hoverable={false} className="resident-history-card">
-            <div className="resident-history-card-heading">
-              <div>
-                <strong>{row.tanggal}</strong>
-                <span>{row.waktu && row.waktu !== '00:00:00' ? row.waktu : 'Tidak ada waktu'}</span>
+        {loading ? (
+          <Card hoverable={false} className="resident-history-empty-card">Memuat riwayat presensi...</Card>
+        ) : !error && !rentangTidakValid && riwayatTersaring.length === 0 ? (
+          <Card hoverable={false} className="resident-history-empty-card">Tidak ada data presensi pada periode ini.</Card>
+        ) : (
+          riwayatTersaring.map((row) => (
+            <Card key={row.id} hoverable={false} className="resident-history-card">
+              <div className="resident-history-card-heading">
+                <div>
+                  <strong>{formatTanggal(row.tanggal)}</strong>
+                  <span>Sesi {row.sesi ? row.sesi.charAt(0).toUpperCase() + row.sesi.slice(1) : '-'} · {formatWaktu(row.waktu)} WIB</span>
+                </div>
+                <Badge variant={variantStatus(row.status)} size="sm">{row.status || 'Tercatat'}</Badge>
               </div>
-              <Badge variant={row.sesi === 'subuh' ? 'default' : 'warning'} size="sm">{row.sesi?.toUpperCase() || '-'}</Badge>
-            </div>
-            <div className="resident-history-card-details">
-              <div><span>Status</span><Badge variant={variantStatus(row.status)}>{row.status || 'Tidak diketahui'}</Badge></div>
-              <div><span>Lokasi</span><strong>{row.lat && row.long ? `${row.lat}, ${row.long}` : 'Tidak tersedia'}</strong></div>
-              <div><span>Keterangan</span><strong>{row.keterangan || '-'}</strong></div>
-            </div>
-            {row.foto_wajah && (
-              <Button size="md" variant="secondary" className="resident-action-button" disabled={photoLoading} onClick={() => openPhoto(row.id)}>
-                {photoLoading ? 'Memuat...' : 'Lihat Foto'}
-              </Button>
-            )}
-          </Card>
-        ))}
-        {!loading && !error && !rentangTidakValid && riwayatTersaring.length === 0 && (
-          <Card hoverable={false} className="resident-history-empty-card">Tidak ada data pada periode ini.</Card>
+              <div className="resident-history-card-details">
+                <div>
+                  <span>Lokasi</span>
+                  <strong>{row.lat && row.long ? 'Terverifikasi di area gedung' : 'Tidak tersedia'}</strong>
+                </div>
+                <div>
+                  <span>Keterangan</span>
+                  <strong>{row.keterangan || 'Presensi di asrama'}</strong>
+                </div>
+              </div>
+              {row.foto_wajah && (
+                <button
+                  type="button"
+                  className="admin-secondary-button"
+                  style={{ width: '100%' }}
+                  disabled={photoLoadingId === row.id}
+                  onClick={() => openPhoto(row.id)}
+                >
+                  {photoLoadingId === row.id ? 'Memuat...' : 'Lihat Foto Bukti'}
+                </button>
+              )}
+            </Card>
+          ))
         )}
-        {loading && <Card hoverable={false} className="resident-history-empty-card">Memuat riwayat...</Card>}
       </div>
 
       {selectedPhoto && (
-        <div className="resident-photo-modal">
+        <div
+          className="resident-photo-modal"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setSelectedPhoto(null);
+          }}
+        >
           <div className="resident-photo-dialog">
             <div className="resident-photo-header">
-              <h2 className="text-card-title">Foto Selfie Presensi</h2>
+              <h2 className="text-card-title">Foto Bukti Presensi</h2>
+              <button
+                type="button"
+                className="resident-camera-close"
+                onClick={() => setSelectedPhoto(null)}
+                aria-label="Tutup foto"
+              >
+                <X size={18} />
+              </button>
             </div>
             <img src={selectedPhoto} alt="Foto selfie presensi" />
-            <Button size="md" variant="secondary" className="resident-action-button" onClick={() => setSelectedPhoto(null)}>Tutup</Button>
+            <Button size="md" variant="secondary" onClick={() => setSelectedPhoto(null)} style={{ width: '100%', textTransform: 'none', letterSpacing: 0 }}>
+              Tutup
+            </Button>
           </div>
         </div>
       )}
-      {photoError && <p className="resident-dashboard-error" role="alert">{photoError}</p>}
     </div>
   );
 }

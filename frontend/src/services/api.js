@@ -3,8 +3,8 @@
  * Menghubungkan Frontend React ke Backend CakePHP
  */
 
-const PRIMARY_API_URL = 'http://localhost:8765/api';
-const FALLBACK_API_URL = '/api';
+const PRIMARY_API_URL = '/api';
+const FALLBACK_API_URL = 'http://localhost:8765/api';
 
 export async function apiRequest(endpoint, options = {}) {
   const token = localStorage.getItem('asrama_token');
@@ -23,32 +23,35 @@ export async function apiRequest(endpoint, options = {}) {
     }
   };
 
-  // Coba ke http://localhost:8765/api terlebih dahulu. Relative /api hanya dipakai
-  // jika server utama tidak dapat dihubungi (error jaringan), bukan saat server
-  // membalas error validasi — agar POST tidak terkirim dua kali.
-  const send = async (baseUrl) => {
-    const response = await fetch(`${baseUrl}${endpoint}`, config);
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const error = new Error(body.message || `HTTP error! status: ${response.status}`);
-      error.status = response.status;
-      error.errors = body.errors;
-      throw error;
-    }
-    return body;
-  };
-
+  // Coba ke /api (Vite proxy) terlebih dahulu. Fallback ke http://localhost:8765/api
+  // hanya dipakai jika koneksi jaringan terputus, bukan saat server membalas error validasi.
+  let response;
   try {
-    return await send(PRIMARY_API_URL);
-  } catch (primaryErr) {
-    if (primaryErr.status) throw primaryErr;
+    response = await fetch(`${PRIMARY_API_URL}${endpoint}`, config);
+  } catch (netErr) {
     try {
-      return await send(FALLBACK_API_URL);
-    } catch (fallbackErr) {
-      console.warn(`API Error on ${endpoint}:`, fallbackErr.message);
-      throw fallbackErr.status ? fallbackErr : primaryErr;
+      response = await fetch(`${FALLBACK_API_URL}${endpoint}`, config);
+    } catch {
+      console.warn(`Network Error on ${endpoint}:`, netErr.message);
+      throw new Error('Tidak dapat terhubung ke server backend. Pastikan server CakePHP sedang aktif.');
     }
   }
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    let errorMsg = errorData.message;
+    if (!errorMsg && errorData.errors) {
+      errorMsg = Object.values(errorData.errors)
+        .map((err) => (typeof err === 'object' ? Object.values(err).join(', ') : err))
+        .join(', ');
+    }
+    const error = new Error(errorMsg || `Permintaan gagal (status: ${response.status})`);
+    error.status = response.status;
+    error.errors = errorData.errors;
+    throw error;
+  }
+
+  return await response.json();
 }
 
 // Shortcut API Methods
@@ -171,5 +174,9 @@ export const api = {
   getLantais: (gedungId) => apiRequest(`/lantais${gedungId ? `?gedung_id=${encodeURIComponent(gedungId)}` : ''}`),
   createLantai: (data) => apiRequest('/lantais', { method: 'POST', body: JSON.stringify(data) }),
   updateLantai: (id, data) => apiRequest(`/lantais/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  deleteLantai: (id) => apiRequest(`/lantais/${id}`, { method: 'DELETE' })
+  deleteLantai: (id) => apiRequest(`/lantais/${id}`, { method: 'DELETE' }),
+
+  // Pengaturan Jadwal Presensi
+  getPengaturanPresensi: () => apiRequest('/pengaturan-presensi'),
+  updatePengaturanPresensi: (data) => apiRequest('/pengaturan-presensi', { method: 'PUT', body: JSON.stringify(data) })
 };

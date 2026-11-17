@@ -37,6 +37,7 @@ class Izin extends Entity
     protected array $_accessible = [
         'user_id' => true,
         'jenis_izin' => true,
+        'sesi' => true,
         'tanggal_mulai' => true,
         'tanggal_selesai' => true,
         'keterangan' => true,

@@ -230,6 +230,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose = () => {} }
               <NavLink
                 key={idx}
                 to={item.path}
+                end
                 onClick={onMobileClose}
                 title={!isOpen ? item.label : undefined}
                 style={({ isActive }) => ({

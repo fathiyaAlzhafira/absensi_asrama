@@ -12,10 +12,15 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
-import { getPresensiScheduleState, getWibDateKey } from '../../utils/presensiSchedule';
+import {
+  getPresensiScheduleState,
+  getStoredPresensiSchedule,
+  getWibDateKey,
+  savePresensiSchedule
+} from '../../utils/presensiSchedule';
 import { isPointInGeoJsonPolygon } from '../../utils/geofence';
 
-const formatJam = (date) => new Intl.DateTimeFormat('id-ID', {
+const formatJam = (date) => new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Asia/Jakarta',
   hour: '2-digit',
   minute: '2-digit',
@@ -31,6 +36,17 @@ const formatTanggal = (date) => new Intl.DateTimeFormat('id-ID', {
   year: 'numeric'
 }).format(date);
 
+const formatTanggalPendek = (tanggal) => {
+  if (!tanggal) return '-';
+  const date = new Date(`${String(tanggal).slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return String(tanggal);
+  return new Intl.DateTimeFormat('id-ID', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric'
+  }).format(date);
+};
+
 const formatWaktuRiwayat = (waktu) => waktu && waktu !== '00:00:00' ? waktu.slice(0, 5) : '--:--';
 
 const getNamaWilayah = ({ latitude, longitude }) => {
@@ -42,6 +58,7 @@ const getNamaWilayah = ({ latitude, longitude }) => {
 export default function DashboardPenghuni() {
   const { user } = useAuth();
   const [now, setNow] = useState(() => new Date());
+  const [scheduleConfig, setScheduleConfig] = useState(() => getStoredPresensiSchedule());
   const [todayStatus, setTodayStatus] = useState({ subuh: null, malam: null });
   const [building, setBuilding] = useState(null);
   const [buildingError, setBuildingError] = useState('');
@@ -49,19 +66,20 @@ export default function DashboardPenghuni() {
   const [riwayatLoading, setRiwayatLoading] = useState(true);
   const [statusError, setStatusError] = useState('');
   const [lokasi, setLokasi] = useState({ status: 'loading', coords: null, error: '' });
-  const { activeSession, nextSession } = getPresensiScheduleState(now);
+
+  const { activeSession, nextSession } = getPresensiScheduleState(now, scheduleConfig);
   const sessionStatus = activeSession ? todayStatus[activeSession.id] : null;
   const presensiTercatat = Boolean(sessionStatus);
   const buildingGeometry = building?.geofence_geojson || building?.polygon_geojson || building?.polygon || null;
   const geofenceStatus = building && !building.is_active
     ? 'inactive'
     : !buildingGeometry
-    ? 'unconfigured'
-    : lokasi.status !== 'ready'
-      ? 'checking'
-      : isPointInGeoJsonPolygon(lokasi.coords.latitude, lokasi.coords.longitude, buildingGeometry)
-        ? 'inside'
-        : 'outside';
+      ? 'unconfigured'
+      : lokasi.status !== 'ready'
+        ? 'checking'
+        : isPointInGeoJsonPolygon(lokasi.coords.latitude, lokasi.coords.longitude, buildingGeometry)
+          ? 'inside'
+          : 'outside';
 
   const perbaruiLokasi = useCallback(() => {
     if (!navigator.geolocation) {
@@ -118,13 +136,20 @@ export default function DashboardPenghuni() {
   useEffect(() => {
     let active = true;
 
-    Promise.allSettled([api.getTodayStatus(), api.getMyPresensi()]).then(([statusResult, historyResult]) => {
+    Promise.allSettled([api.getTodayStatus(), api.getMyPresensi(), api.getPengaturanPresensi()]).then(([statusResult, historyResult, scheduleResult]) => {
       if (!active) return;
+
+      if (scheduleResult.status === 'fulfilled' && scheduleResult.value?.data) {
+        setScheduleConfig(savePresensiSchedule(scheduleResult.value.data));
+      }
 
       const errors = [];
       let status = null;
       if (statusResult.status === 'fulfilled' && statusResult.value?.data) {
         status = statusResult.value.data;
+        if (status.jadwal) {
+          setScheduleConfig(savePresensiSchedule(status.jadwal));
+        }
       } else {
         errors.push('Status presensi hari ini belum dapat dimuat.');
       }
@@ -167,11 +192,11 @@ export default function DashboardPenghuni() {
   return (
     <div className="resident-page resident-dashboard">
       <Card hoverable={false} className="resident-greeting-card">
-          <h1 className="text-page-title">Halo, {user?.nama || 'Penghuni Asrama'}</h1>
-          <p className="text-body">
-            {user?.nomor_kamar || user?.kamar ? `Kamar ${user.nomor_kamar || user.kamar} · ` : ''}
-            {user?.gedung || 'Asrama Unand'}
-          </p>
+        <h1 className="text-page-title">Halo, {user?.nama || 'Penghuni Asrama'}</h1>
+        <p className="text-body">
+          {user?.nomor_kamar || user?.kamar ? `Kamar ${user.nomor_kamar || user.kamar} · ` : ''}
+          {building?.nama || user?.gedung || 'Asrama Unand'}
+        </p>
       </Card>
 
       <Card hoverable={false} className="resident-attendance-card">
@@ -216,7 +241,9 @@ export default function DashboardPenghuni() {
                 {buildingError && <p className="resident-dashboard-error">{buildingError}</p>}
                 {presensiTercatat && (
                   <p className="resident-attendance-recorded">
-                    Presensi tercatat{sessionStatus.waktu ? ` pukul ${sessionStatus.waktu}` : ''}.
+                    {sessionStatus.status === 'izin'
+                      ? `Status Sesi ${activeSession.label}: Izin telah disetujui.`
+                      : `Presensi tercatat${sessionStatus.waktu ? ` pukul ${sessionStatus.waktu}` : ''}.`}
                   </p>
                 )}
                 {statusError && <p className="resident-dashboard-error">{statusError}</p>}
@@ -301,7 +328,7 @@ export default function DashboardPenghuni() {
                   </div>
                   <div className="resident-recent-copy">
                     <strong>Presensi {record.sesi || 'Asrama'}</strong>
-                    <span>{record.tanggal || tanggalHariIni} · {formatWaktuRiwayat(record.waktu)}</span>
+                    <span>{formatTanggalPendek(record.tanggal || tanggalHariIni)} · {formatWaktuRiwayat(record.waktu)}</span>
                   </div>
                   <Badge variant={record.status === 'hadir' ? 'success' : record.status === 'izin' ? 'warning' : 'error'} size="sm">
                     {record.status || 'tercatat'}

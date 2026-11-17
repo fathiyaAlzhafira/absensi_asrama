@@ -137,6 +137,12 @@ return function (RouteBuilder $routes): void {
             ->setPass(['id'])
             ->setMethods(['DELETE']);
 
+        // Pengaturan Jadwal Presensi
+        $builder->connect('/pengaturan-presensi', ['controller' => 'PengaturanPresensi', 'action' => 'index'])
+            ->setMethods(['GET', 'OPTIONS']);
+        $builder->connect('/pengaturan-presensi', ['controller' => 'PengaturanPresensi', 'action' => 'edit'])
+            ->setMethods(['PUT', 'POST']);
+
         // Izin
         $builder->connect('/izins/my-permits', ['controller' => 'Izins', 'action' => 'myPermits']);
         $builder->connect('/izins/pending', ['controller' => 'Izins', 'action' => 'pending']);
