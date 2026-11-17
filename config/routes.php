@@ -87,12 +87,55 @@ return function (RouteBuilder $routes): void {
         // Auth
         $builder->connect('/auth/login', ['controller' => 'Auth', 'action' => 'login']);
         $builder->connect('/auth/profile', ['controller' => 'Auth', 'action' => 'profile']);
+        $builder->connect('/auth/change-password', ['controller' => 'Auth', 'action' => 'changePassword']);
         $builder->connect('/auth/logout', ['controller' => 'Auth', 'action' => 'logout']);
 
         // Presensi
         $builder->connect('/presensis/my-history', ['controller' => 'Presensis', 'action' => 'myHistory']);
         $builder->connect('/presensis/today-status', ['controller' => 'Presensis', 'action' => 'todayStatus']);
+        $builder->connect('/presensis/{id}/photo', ['controller' => 'Presensis', 'action' => 'photo'])
+            ->setPass(['id'])
+            ->setMethods(['GET']);
         $builder->connect('/presensis', ['controller' => 'Presensis', 'action' => 'add']);
+
+        // Gedung and room management
+        $builder->connect('/gedungs/my-assignment', ['controller' => 'Gedungs', 'action' => 'myAssignment'])
+            ->setMethods(['GET']);
+        $builder->connect('/gedungs', ['controller' => 'Gedungs', 'action' => 'index'])
+            ->setMethods(['GET']);
+        $builder->connect('/gedungs', ['controller' => 'Gedungs', 'action' => 'add'])
+            ->setMethods(['POST']);
+        $builder->connect('/gedungs/{id}/status', ['controller' => 'Gedungs', 'action' => 'status'])
+            ->setPass(['id'])
+            ->setMethods(['PATCH', 'PUT']);
+        $builder->connect('/gedungs/{id}', ['controller' => 'Gedungs', 'action' => 'edit'])
+            ->setPass(['id'])
+            ->setMethods(['PUT']);
+        $builder->connect('/gedungs/{id}', ['controller' => 'Gedungs', 'action' => 'delete'])
+            ->setPass(['id'])
+            ->setMethods(['DELETE']);
+
+        $builder->connect('/kamars', ['controller' => 'Kamars', 'action' => 'index'])
+            ->setMethods(['GET']);
+        $builder->connect('/kamars', ['controller' => 'Kamars', 'action' => 'add'])
+            ->setMethods(['POST']);
+        $builder->connect('/kamars/{id}', ['controller' => 'Kamars', 'action' => 'edit'])
+            ->setPass(['id'])
+            ->setMethods(['PUT']);
+        $builder->connect('/kamars/{id}', ['controller' => 'Kamars', 'action' => 'delete'])
+            ->setPass(['id'])
+            ->setMethods(['DELETE']);
+
+        $builder->connect('/lantais', ['controller' => 'Lantais', 'action' => 'index'])
+            ->setMethods(['GET']);
+        $builder->connect('/lantais', ['controller' => 'Lantais', 'action' => 'add'])
+            ->setMethods(['POST']);
+        $builder->connect('/lantais/{id}', ['controller' => 'Lantais', 'action' => 'edit'])
+            ->setPass(['id'])
+            ->setMethods(['PUT']);
+        $builder->connect('/lantais/{id}', ['controller' => 'Lantais', 'action' => 'delete'])
+            ->setPass(['id'])
+            ->setMethods(['DELETE']);
 
         // Izin
         $builder->connect('/izins/my-permits', ['controller' => 'Izins', 'action' => 'myPermits']);

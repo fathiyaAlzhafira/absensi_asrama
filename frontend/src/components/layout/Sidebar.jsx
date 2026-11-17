@@ -4,7 +4,6 @@ import { useAuth } from '../../context/AuthContext';
 import { useSidebar } from '../../context/SidebarContext';
 import {
   Home,
-  Camera,
   History,
   FileText,
   CheckSquare,
@@ -19,7 +18,7 @@ import {
 } from 'lucide-react';
 import Badge from '../common/Badge';
 
-export default function Sidebar() {
+export default function Sidebar({ mobileOpen = false, onMobileClose = () => {} }) {
   const { user, role, logout } = useAuth();
   const { isOpen, toggleSidebar } = useSidebar();
   const navigate = useNavigate();
@@ -27,7 +26,6 @@ export default function Sidebar() {
   // Menu Penghuni
   const penghuniMenu = [
     { label: 'Dashboard', path: '/penghuni/dashboard', icon: Home },
-    { label: 'Presensi Kamera & GPS', path: '/penghuni/presensi', icon: Camera },
     { label: 'Riwayat Presensi', path: '/penghuni/riwayat', icon: History },
     { label: 'Ajukan Izin', path: '/penghuni/izin/tambah', icon: FileText },
     { label: 'Status Izin Saya', path: '/penghuni/izin', icon: CheckSquare },
@@ -65,6 +63,7 @@ export default function Sidebar() {
 
   return (
     <aside
+      className={`app-sidebar${mobileOpen ? ' mobile-open' : ''}`}
       style={{
         width: isOpen ? '240px' : '72px',
         height: '100vh',
@@ -231,6 +230,7 @@ export default function Sidebar() {
               <NavLink
                 key={idx}
                 to={item.path}
+                onClick={onMobileClose}
                 title={!isOpen ? item.label : undefined}
                 style={({ isActive }) => ({
                   display: 'flex',

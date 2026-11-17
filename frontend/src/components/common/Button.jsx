@@ -20,7 +20,7 @@ export default function Button({
     alignItems: 'center',
     justifyContent: 'center',
     gap: '8px',
-    borderRadius: 'var(--radius-pill)',
+    borderRadius: '12px',
     fontFamily: 'var(--font-family)',
     fontWeight: '700',
     cursor: disabled ? 'not-allowed' : 'pointer',

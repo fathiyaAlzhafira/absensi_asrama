@@ -13,6 +13,10 @@ class UsersController extends ApiController
      */
     public function index(): Response
     {
+        $admin = $this->requireAdminUser();
+        if ($admin instanceof Response) {
+            return $admin;
+        }
         $role = $this->request->getQuery('role');
         $search = $this->request->getQuery('search');
 
@@ -57,6 +61,10 @@ class UsersController extends ApiController
     public function add(): Response
     {
         $this->request->allowMethod(['post']);
+        $admin = $this->requireAdminUser();
+        if ($admin instanceof Response) {
+            return $admin;
+        }
         $usersTable = $this->fetchTable('Users');
 
         $data = $this->request->getData();
@@ -81,6 +89,10 @@ class UsersController extends ApiController
     public function edit(string $id): Response
     {
         $this->request->allowMethod(['put', 'post']);
+        $admin = $this->requireAdminUser();
+        if ($admin instanceof Response) {
+            return $admin;
+        }
         $usersTable = $this->fetchTable('Users');
 
         $user = $usersTable->get($id);
@@ -107,6 +119,10 @@ class UsersController extends ApiController
     public function delete(string $id): Response
     {
         $this->request->allowMethod(['delete', 'post']);
+        $admin = $this->requireAdminUser();
+        if ($admin instanceof Response) {
+            return $admin;
+        }
         $usersTable = $this->fetchTable('Users');
 
         $user = $usersTable->get($id);

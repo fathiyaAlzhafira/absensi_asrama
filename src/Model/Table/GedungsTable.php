@@ -46,6 +46,14 @@ class GedungsTable extends Table
         $this->hasMany('Kamars', [
             'foreignKey' => 'gedung_id',
         ]);
+        $this->hasMany('Lantais', [
+            'foreignKey' => 'gedung_id',
+            'sort' => ['Lantais.nomor_lantai' => 'ASC'],
+        ]);
+        $this->belongsTo('Supervisor', [
+            'className' => 'Users',
+            'foreignKey' => 'id_user',
+        ]);
     }
 
     /**
@@ -91,5 +99,16 @@ class GedungsTable extends Table
             ->allowEmptyDateTime('updated_at');
 
         return $validator;
+    }
+
+    /**
+     * @param \Cake\ORM\RulesChecker $rules Rules checker.
+     * @return \Cake\ORM\RulesChecker
+     */
+    public function buildRules(RulesChecker $rules): RulesChecker
+    {
+        $rules->add($rules->isUnique(['nama'], 'Nama gedung sudah digunakan.'), ['errorField' => 'nama']);
+
+        return $rules;
     }
 }

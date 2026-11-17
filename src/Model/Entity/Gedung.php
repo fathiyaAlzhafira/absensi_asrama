@@ -15,6 +15,8 @@ use Cake\ORM\Entity;
  * @property string|null $longitude
  * @property int $radius_meter
  * @property string|null $keterangan
+ * @property string|null $geofence_geojson
+ * @property bool $is_active
  * @property \Cake\I18n\DateTime|null $created_at
  * @property \Cake\I18n\DateTime|null $updated_at
  *
@@ -38,6 +40,7 @@ class Gedung extends Entity
         'longitude' => true,
         'radius_meter' => true,
         'keterangan' => true,
+        'geofence_geojson' => true,
         'created_at' => true,
         'updated_at' => true,
         'kamars' => true,

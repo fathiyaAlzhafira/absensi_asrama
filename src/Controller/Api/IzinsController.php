@@ -13,11 +13,14 @@ class IzinsController extends ApiController
      */
     public function myPermits(): Response
     {
-        $userId = $this->getAuthUserId();
+        $user = $this->requireAuthenticatedUser();
+        if ($user instanceof Response) {
+            return $user;
+        }
         $izinsTable = $this->fetchTable('Izins');
 
         $list = $izinsTable->find()
-            ->where(['Izins.user_id' => $userId])
+            ->where(['Izins.user_id' => $user->id])
             ->order(['Izins.created_at' => 'DESC'])
             ->all();
 
@@ -31,11 +34,14 @@ class IzinsController extends ApiController
     public function add(): Response
     {
         $this->request->allowMethod(['post']);
-        $userId = $this->getAuthUserId();
+        $user = $this->requireAuthenticatedUser();
+        if ($user instanceof Response) {
+            return $user;
+        }
         $izinsTable = $this->fetchTable('Izins');
 
         $data = $this->request->getData();
-        $data['user_id'] = $userId;
+        $data['user_id'] = $user->id;
         $data['status'] = 'pending';
 
         // Tangani upload file jika ada
@@ -67,6 +73,10 @@ class IzinsController extends ApiController
      */
     public function pending(): Response
     {
+        $user = $this->requireAuthenticatedUser();
+        if ($user instanceof Response) {
+            return $user;
+        }
         $izinsTable = $this->fetchTable('Izins');
         $list = $izinsTable->find()
             ->where(['Izins.status' => 'pending'])
@@ -84,8 +94,11 @@ class IzinsController extends ApiController
     public function verify(string $id): Response
     {
         $this->request->allowMethod(['post']);
+        $user = $this->requireAuthenticatedUser();
+        if ($user instanceof Response) {
+            return $user;
+        }
         $izinsTable = $this->fetchTable('Izins');
-        $fasilId = $this->getAuthUserId();
 
         $data = $this->request->getData();
         $status = $data['status'] ?? 'disetujui';
@@ -94,25 +107,12 @@ class IzinsController extends ApiController
         $izin = $izinsTable->get($id);
         $izin->status = $status;
         $izin->catatan_fasil = $catatan;
-        $izin->disetujui_oleh = $fasilId;
+        $izin->disetujui_oleh = $user->id;
 
         if ($izinsTable->save($izin)) {
             return $this->jsonSuccess($izin->toArray(), "Izin berhasil di-$status.");
         }
 
         return $this->jsonError('Gagal memverifikasi izin.', 422);
-    }
-
-    private function getAuthUserId(): int
-    {
-        $authHeader = $this->request->getHeaderLine('Authorization');
-        if (!empty($authHeader) && preg_match('/Bearer\s+(.*)$/i', $authHeader, $matches)) {
-            $decoded = base64_decode($matches[1]);
-            $parts = explode(':', $decoded);
-            if (!empty($parts[0])) {
-                return (int)$parts[0];
-            }
-        }
-        return 4;
     }
 }

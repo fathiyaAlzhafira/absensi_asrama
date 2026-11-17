@@ -1,9 +1,9 @@
 import React from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Clock, MapPin, User as UserIcon } from 'lucide-react';
+import { Clock, MapPin, Menu, User as UserIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
-export default function Topbar() {
+export default function Topbar({ onMenuClick }) {
   const { user } = useAuth();
 
   return (
@@ -29,6 +29,14 @@ export default function Topbar() {
         minWidth: 0,
         flexShrink: 1
       }}>
+        <button
+          type="button"
+          className="mobile-menu-toggle"
+          aria-label="Buka menu"
+          onClick={onMenuClick}
+        >
+          <Menu size={20} />
+        </button>
         <div style={{
           display: 'flex',
           alignItems: 'center',
@@ -127,6 +135,19 @@ export default function Topbar() {
         .topbar-profile-chip {
           padding: 5px 12px;
         }
+        .mobile-menu-toggle {
+          display: none;
+          align-items: center;
+          justify-content: center;
+          width: 38px;
+          height: 38px;
+          flex-shrink: 0;
+          color: var(--color-text-primary);
+          background: var(--color-surface-l2);
+          border: 1px solid var(--color-border);
+          border-radius: var(--radius-sm);
+          cursor: pointer;
+        }
         .sesi-compact-text {
           display: none;
         }
@@ -135,6 +156,9 @@ export default function Topbar() {
         }
 
         @media (max-width: 768px) {
+          .mobile-menu-toggle {
+            display: inline-flex;
+          }
           .hide-on-tablet {
             display: none !important;
           }

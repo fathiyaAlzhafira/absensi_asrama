@@ -23,25 +23,30 @@ export async function apiRequest(endpoint, options = {}) {
     }
   };
 
-  // Coba ke http://localhost:8765/api terlebih dahulu, jika gagal coba ke relative /api
-  try {
-    const response = await fetch(`${PRIMARY_API_URL}${endpoint}`, config);
+  // Coba ke http://localhost:8765/api terlebih dahulu. Relative /api hanya dipakai
+  // jika server utama tidak dapat dihubungi (error jaringan), bukan saat server
+  // membalas error validasi — agar POST tidak terkirim dua kali.
+  const send = async (baseUrl) => {
+    const response = await fetch(`${baseUrl}${endpoint}`, config);
+    const body = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+      const error = new Error(body.message || `HTTP error! status: ${response.status}`);
+      error.status = response.status;
+      error.errors = body.errors;
+      throw error;
     }
-    return await response.json();
+    return body;
+  };
+
+  try {
+    return await send(PRIMARY_API_URL);
   } catch (primaryErr) {
+    if (primaryErr.status) throw primaryErr;
     try {
-      const response = await fetch(`${FALLBACK_API_URL}${endpoint}`, config);
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
-      }
-      return await response.json();
+      return await send(FALLBACK_API_URL);
     } catch (fallbackErr) {
-      console.warn(`API Error on ${endpoint}:`, primaryErr.message);
-      throw primaryErr;
+      console.warn(`API Error on ${endpoint}:`, fallbackErr.message);
+      throw fallbackErr.status ? fallbackErr : primaryErr;
     }
   }
 }
@@ -110,12 +115,35 @@ export const api = {
   },
 
   getProfile: () => apiRequest('/auth/profile'),
+  updateProfile: (data) => apiRequest('/auth/profile', { method: 'PUT', body: JSON.stringify(data) }),
+  changePassword: (data) => apiRequest('/auth/change-password', { method: 'POST', body: JSON.stringify(data) }),
   logout: () => apiRequest('/auth/logout', { method: 'POST' }).catch(() => ({})),
 
   // Presensi
   submitPresensi: (data) => apiRequest('/presensis', { method: 'POST', body: JSON.stringify(data) }),
   getMyPresensi: () => apiRequest('/presensis/my-history'),
   getTodayStatus: () => apiRequest('/presensis/today-status'),
+  getPresensiPhoto: async (id) => {
+    const token = localStorage.getItem('asrama_token');
+    const headers = {
+      'Accept': 'image/jpeg',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+    let response;
+
+    try {
+      response = await fetch(`${PRIMARY_API_URL}/presensis/${id}/photo`, { headers });
+    } catch {
+      response = await fetch(`${FALLBACK_API_URL}/presensis/${id}/photo`, { headers });
+    }
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Foto presensi gagal dimuat (HTTP ${response.status}).`);
+    }
+
+    return URL.createObjectURL(await response.blob());
+  },
 
   // Izin
   submitIzin: (formData) => apiRequest('/izins', { method: 'POST', body: formData, isFormData: true }),
@@ -125,5 +153,23 @@ export const api = {
 
   // Users (Admin)
   getUsers: (role) => apiRequest(`/users${role ? `?role=${role}` : ''}`),
-  createUser: (data) => apiRequest('/users/add', { method: 'POST', body: JSON.stringify(data) })
+  createUser: (data) => apiRequest('/users/add', { method: 'POST', body: JSON.stringify(data) }),
+  updateUser: (id, data) => apiRequest(`/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteUser: (id) => apiRequest(`/users/${id}/delete`, { method: 'DELETE' }),
+
+  // Buildings and rooms
+  getGedungs: () => apiRequest('/gedungs'),
+  getMyBuildingAssignment: () => apiRequest('/gedungs/my-assignment'),
+  createGedung: (data) => apiRequest('/gedungs', { method: 'POST', body: JSON.stringify(data) }),
+  updateGedung: (id, data) => apiRequest(`/gedungs/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  updateGedungStatus: (id, isActive) => apiRequest(`/gedungs/${id}/status`, { method: 'PATCH', body: JSON.stringify({ is_active: isActive }) }),
+  deleteGedung: (id) => apiRequest(`/gedungs/${id}`, { method: 'DELETE' }),
+  getKamars: (gedungId) => apiRequest(`/kamars${gedungId ? `?gedung_id=${encodeURIComponent(gedungId)}` : ''}`),
+  createKamar: (data) => apiRequest('/kamars', { method: 'POST', body: JSON.stringify(data) }),
+  updateKamar: (id, data) => apiRequest(`/kamars/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteKamar: (id) => apiRequest(`/kamars/${id}`, { method: 'DELETE' }),
+  getLantais: (gedungId) => apiRequest(`/lantais${gedungId ? `?gedung_id=${encodeURIComponent(gedungId)}` : ''}`),
+  createLantai: (data) => apiRequest('/lantais', { method: 'POST', body: JSON.stringify(data) }),
+  updateLantai: (id, data) => apiRequest(`/lantais/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteLantai: (id) => apiRequest(`/lantais/${id}`, { method: 'DELETE' })
 };

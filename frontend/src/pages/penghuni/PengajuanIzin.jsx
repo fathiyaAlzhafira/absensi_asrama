@@ -1,14 +1,15 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
 import Button from '../../components/common/Button';
-import Badge from '../../components/common/Badge';
-import { FileUp, Calendar, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import RiwayatStatusIzin from '../../components/penghuni/RiwayatStatusIzin';
+import { CheckCircle2, AlertCircle, ChevronLeft } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
 import { api } from '../../services/api';
 
 export default function PengajuanIzin() {
-  const navigate = useNavigate();
+  const location = useLocation();
+  const fileInputRef = useRef(null);
   const [formData, setFormData] = useState({
     jenis_izin: 'pulang_kampung',
     tanggal_mulai: '',
@@ -19,6 +20,15 @@ export default function PengajuanIzin() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
+
+  useEffect(() => {
+    if (location.hash !== '#riwayat-izin') return undefined;
+    const timerId = window.setTimeout(() => {
+      document.getElementById('riwayat-izin')?.scrollIntoView({ behavior: 'smooth' });
+    }, 0);
+    return () => window.clearTimeout(timerId);
+  }, [location.hash]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -26,9 +36,14 @@ export default function PengajuanIzin() {
       setError('Tanggal mulai dan selesai wajib diisi.');
       return;
     }
+    if (formData.tanggal_selesai < formData.tanggal_mulai) {
+      setError('Tanggal selesai tidak boleh sebelum tanggal mulai.');
+      return;
+    }
 
     setLoading(true);
     setError('');
+    setSuccess(false);
 
     try {
       const dataPayload = new FormData();
@@ -40,31 +55,43 @@ export default function PengajuanIzin() {
         dataPayload.append('bukti_file', selectedFile);
       }
 
-      await api.submitIzin(dataPayload);
+      const response = await api.submitIzin(dataPayload);
+      if (response?.status !== 'success') {
+        throw new Error(response?.message || 'Pengajuan izin gagal dikirim.');
+      }
       setSuccess(true);
-      setTimeout(() => {
-        navigate('/penghuni/izin');
-      }, 1500);
+      setHistoryRefreshKey((key) => key + 1);
+      setFormData({
+        jenis_izin: 'pulang_kampung',
+        tanggal_mulai: '',
+        tanggal_selesai: '',
+        keterangan: ''
+      });
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (err) {
-      // Jika demo offline atau error backend, tetap tampilkan konfirmasi
-      setSuccess(true);
-      setTimeout(() => {
-        navigate('/penghuni/izin');
-      }, 1500);
+      setError(err.message || 'Pengajuan izin gagal dikirim.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div>
-      <div style={{ marginBottom: '28px' }}>
-        <h1 className="text-page-title">Form Pengajuan Izin</h1>
-        <p className="text-body">Ajukan permohonan izin jika tidak dapat mengikuti presensi Subuh atau Malam</p>
+    <div className="resident-page resident-pengajuan-izin">
+      <div className="resident-permission-heading">
+        <div className="resident-page-heading">
+          <div className="resident-subpage-banner">
+            <Link to="/penghuni/dashboard" className="resident-subpage-back" aria-label="Kembali ke beranda" title="Kembali ke beranda">
+              <ChevronLeft size={22} />
+            </Link>
+            <h1 className="resident-subpage-title">Form Pengajuan Izin</h1>
+          </div>
+        </div>
       </div>
 
-      <div style={{ maxWidth: '680px' }}>
-        <Card hoverable={false} style={{ padding: '32px' }}>
+      <div className="resident-permission-layout">
+        <div className="resident-permission-form">
+        <Card hoverable={false} className="resident-form-card">
           {error && (
             <div style={{
               display: 'flex',
@@ -132,7 +159,7 @@ export default function PengajuanIzin() {
             </div>
 
             {/* Rentang Tanggal Izin */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <div className="resident-date-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '16px' }}>
               <Input
                 type="date"
                 label="Tanggal Mulai Izin"
@@ -191,7 +218,6 @@ export default function PengajuanIzin() {
                   display: 'block'
                 }}
               >
-                <FileUp size={32} color="var(--color-primary)" style={{ margin: '0 auto 8px' }} />
                 <p className="text-body-white" style={{ fontSize: '13px' }}>
                   {selectedFile ? selectedFile.name : 'Klik untuk memilih file bukti'}
                 </p>
@@ -202,8 +228,9 @@ export default function PengajuanIzin() {
                   id="file-upload"
                   type="file"
                   accept=".jpg,.jpeg,.png,.pdf"
+                  ref={fileInputRef}
                   style={{ display: 'none' }}
-                  onChange={(e) => setSelectedFile(e.target.files[0])}
+                  onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
                 />
               </label>
             </div>
@@ -213,12 +240,15 @@ export default function PengajuanIzin() {
               variant="primary"
               size="lg"
               disabled={loading}
+              className="resident-action-button"
               style={{ marginTop: '8px' }}
             >
               {loading ? 'Mengirim Pengajuan...' : 'Kirim Permohonan Izin'}
             </Button>
           </form>
         </Card>
+        </div>
+        <RiwayatStatusIzin refreshKey={historyRefreshKey} />
       </div>
     </div>
   );

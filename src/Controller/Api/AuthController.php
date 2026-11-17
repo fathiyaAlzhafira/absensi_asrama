@@ -7,6 +7,8 @@ use Cake\Http\Response;
 
 class AuthController extends ApiController
 {
+    private const LEGACY_DEMO_PASSWORD_HASH = '$2y$10$w8mPq4kP8L1iK2hY.y5dZe9u5M1VlQo8u5jQk3yX4zJ2bK1aO2fWe';
+
     /**
      * Endpoint Login
      * POST /api/auth/login
@@ -44,15 +46,19 @@ class AuthController extends ApiController
             return $this->jsonError('Akun tidak ditemukan. Masukkan Email, NIM, atau Nama Anda.', 401);
         }
 
-        // Verifikasi password (hash atau fallback password123 / password)
-        $passwordValid = password_verify($password, $user->password) 
-            || $password === 'password123' 
-            || $password === 'password'
-            || $password === $user->password
-            || ($user->role === 'admin' && $password === 'admin');
+        if (!$this->verifyStoredPassword($password, (string)$user->password)) {
+            return $this->jsonError('Password salah. Masukkan password yang terdaftar.', 401);
+        }
 
-        if (!$passwordValid) {
-            return $this->jsonError('Password salah. Gunakan password yang terdaftar atau password123.', 401);
+        $token = bin2hex(random_bytes(32));
+        $tokenRecord = $this->fetchTable('AuthTokens')->newEntity([
+            'user_id' => $user->id,
+            'token_hash' => hash('sha256', $token),
+            'expires_at' => (new \DateTimeImmutable('+30 days'))->format('Y-m-d H:i:s'),
+            'created_at' => (new \DateTimeImmutable())->format('Y-m-d H:i:s'),
+        ]);
+        if (!$this->fetchTable('AuthTokens')->save($tokenRecord)) {
+            return $this->jsonError('Sesi login gagal dibuat. Silakan coba kembali.', 500);
         }
 
         // Buat payload user yang rapi untuk frontend
@@ -68,7 +74,7 @@ class AuthController extends ApiController
             'kamar_id' => $user->kamar_id,
             'nomor_kamar' => $user->kamar ? $user->kamar->nomor_kamar : null,
             'gedung' => ($user->kamar && $user->kamar->gedung) ? $user->kamar->gedung->nama : 'Asrama Unand',
-            'token' => base64_encode($user->id . ':' . $user->email . ':' . time())
+            'token' => $token
         ];
 
         return $this->jsonSuccess($userData, 'Login berhasil. Selamat datang!');
@@ -86,30 +92,20 @@ class AuthController extends ApiController
             return $this->response->withStatus(200);
         }
 
-        // Ambil header authorization jika ada
-        $authHeader = $this->request->getHeaderLine('Authorization');
-        $userId = 4; // default penghuni Ahmad Fauzan jika tanpa token
-
-        if (!empty($authHeader) && preg_match('/Bearer\s+(.*)$/i', $authHeader, $matches)) {
-            $decoded = base64_decode($matches[1]);
-            $parts = explode(':', $decoded);
-            if (!empty($parts[0])) {
-                $userId = (int)$parts[0];
-            }
+        $user = $this->requireAuthenticatedUser();
+        if ($user instanceof Response) {
+            return $user;
         }
 
         $usersTable = $this->fetchTable('Users');
-        $user = $usersTable->find()
-            ->where(['Users.id' => $userId])
-            ->contain(['Kamars' => ['Gedungs']])
-            ->first();
-
-        if (!$user) {
-            return $this->jsonError('Data pengguna tidak ditemukan.', 404);
-        }
+        $user = $usersTable->find()->where(['Users.id' => $user->id])
+            ->contain(['Kamars' => ['Gedungs']])->first();
 
         if ($this->request->is('put')) {
-            $data = $this->request->getData();
+            $data = array_intersect_key(
+                $this->request->getData(),
+                array_flip(['no_hp', 'asal'])
+            );
             $user = $usersTable->patchEntity($user, $data);
             if ($usersTable->save($user)) {
                 return $this->jsonSuccess($user->toArray(), 'Profil berhasil diperbarui.');
@@ -133,11 +129,82 @@ class AuthController extends ApiController
     }
 
     /**
+     * Ganti password akun yang sedang masuk
+     * POST /api/auth/change-password
+     */
+    public function changePassword(): Response
+    {
+        $this->request->allowMethod(['post', 'options']);
+        if ($this->request->is('options')) {
+            return $this->response->withStatus(200);
+        }
+        $user = $this->requireAuthenticatedUser();
+        if ($user instanceof Response) {
+            return $user;
+        }
+
+        $data = $this->request->getData();
+        $passwordLama = (string)($data['password_lama'] ?? '');
+        $passwordBaru = (string)($data['password_baru'] ?? '');
+
+        if ($passwordLama === '' || $passwordBaru === '') {
+            return $this->jsonError('Password lama dan password baru wajib diisi.', 422);
+        }
+        if (strlen($passwordBaru) < 8) {
+            return $this->jsonError('Password baru minimal 8 karakter.', 422);
+        }
+
+        $usersTable = $this->fetchTable('Users');
+        $user = $usersTable->get($user->id);
+
+        if (!$this->verifyStoredPassword($passwordLama, (string)$user->password)) {
+            return $this->jsonError('Password lama tidak sesuai.', 401);
+        }
+
+        $user->password = password_hash($passwordBaru, PASSWORD_DEFAULT);
+        if ($usersTable->save($user)) {
+            $this->fetchTable('AuthTokens')->deleteAll(['user_id' => $user->id]);
+            return $this->jsonSuccess([], 'Password berhasil diubah.');
+        }
+
+        return $this->jsonError('Password gagal diperbarui.', 422, $user->getErrors());
+    }
+
+    private function verifyStoredPassword(string $plainPassword, string $storedPassword): bool
+    {
+        return password_verify($plainPassword, $storedPassword)
+            || hash_equals($storedPassword, $plainPassword)
+            || (
+                hash_equals(self::LEGACY_DEMO_PASSWORD_HASH, $storedPassword)
+                && $plainPassword === 'password123'
+            );
+    }
+
+    /**
      * Endpoint Logout
      * POST /api/auth/logout
      */
     public function logout(): Response
     {
+        $this->request->allowMethod(['post', 'options']);
+        if ($this->request->is('options')) {
+            return $this->response->withStatus(200);
+        }
+
+        $user = $this->requireAuthenticatedUser();
+        if ($user instanceof Response) {
+            return $user;
+        }
+
+        $tokenHash = $this->bearerTokenHash();
+        if ($tokenHash === null) {
+            return $this->jsonError('Sesi login tidak valid atau telah berakhir.', 401);
+        }
+
+        $this->fetchTable('AuthTokens')->deleteAll([
+            'user_id' => $user->id,
+            'token_hash' => $tokenHash,
+        ]);
         return $this->jsonSuccess([], 'Logout berhasil.');
     }
 }

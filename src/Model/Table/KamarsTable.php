@@ -100,6 +100,10 @@ class KamarsTable extends Table
     public function buildRules(RulesChecker $rules): RulesChecker
     {
         $rules->add($rules->existsIn(['gedung_id'], 'Gedungs'), ['errorField' => 'gedung_id']);
+        $rules->add(
+            $rules->isUnique(['gedung_id', 'nomor_kamar']),
+            ['errorField' => 'nomor_kamar']
+        );
 
         return $rules;
     }

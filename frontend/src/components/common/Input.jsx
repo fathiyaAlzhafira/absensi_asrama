@@ -12,6 +12,7 @@ export default function Input({
   defaultValue,
   onChange,
   name,
+  autoComplete,
   error,
   icon: Icon,
   disabled = false,
@@ -55,6 +56,7 @@ export default function Input({
         <input
           type={type}
           name={name}
+          autoComplete={autoComplete}
           value={value}
           defaultValue={defaultValue}
           onChange={onChange}

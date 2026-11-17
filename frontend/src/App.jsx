@@ -12,10 +12,8 @@ import Profile from './pages/auth/Profile';
 
 // Penghuni Pages
 import DashboardPenghuni from './pages/penghuni/DashboardPenghuni';
-import Presensi from './pages/penghuni/Presensi';
 import RiwayatPresensi from './pages/penghuni/RiwayatPresensi';
 import PengajuanIzin from './pages/penghuni/PengajuanIzin';
-import StatusIzin from './pages/penghuni/StatusIzin';
 
 // Fasil Pages
 import DashboardFasil from './pages/fasil/DashboardFasil';
@@ -56,9 +54,9 @@ export default function App() {
 
               {/* Routes Penghuni */}
               <Route path="/penghuni/dashboard" element={<DashboardPenghuni />} />
-              <Route path="/penghuni/presensi" element={<Presensi />} />
+              <Route path="/penghuni/presensi" element={<Navigate to="/penghuni/dashboard" replace />} />
               <Route path="/penghuni/riwayat" element={<RiwayatPresensi />} />
-              <Route path="/penghuni/izin" element={<StatusIzin />} />
+              <Route path="/penghuni/izin" element={<Navigate to="/penghuni/izin/tambah#riwayat-izin" replace />} />
               <Route path="/penghuni/izin/tambah" element={<PengajuanIzin />} />
 
               {/* Routes Fasil */}

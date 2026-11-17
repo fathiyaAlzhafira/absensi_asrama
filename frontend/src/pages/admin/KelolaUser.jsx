@@ -20,12 +20,14 @@ export default function KelolaUser() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUserId, setEditingUserId] = useState(null);
+  const [kamars, setKamars] = useState([]);
 
   const [formData, setFormData] = useState({
     nama: '',
     email: '',
     nim: '',
     role: 'penghuni',
+    kamar_id: '',
     asal: '',
     jekel: 'L',
     no_hp: '',
@@ -43,6 +45,9 @@ export default function KelolaUser() {
 
   useEffect(() => {
     loadUsers();
+    api.getKamars().then((res) => {
+      if (Array.isArray(res?.data)) setKamars(res.data);
+    }).catch(() => {});
   }, []);
 
   const handleOpenAddModal = () => {
@@ -52,6 +57,7 @@ export default function KelolaUser() {
       email: '',
       nim: '',
       role: 'penghuni',
+      kamar_id: '',
       asal: '',
       jekel: 'L',
       no_hp: '',
@@ -67,6 +73,7 @@ export default function KelolaUser() {
       email: user.email || '',
       nim: user.nim || '',
       role: user.role === 'fasil' ? 'fasil' : 'penghuni',
+      kamar_id: user.kamar_id ? String(user.kamar_id) : '',
       asal: user.asal || '',
       jekel: user.jekel || 'L',
       no_hp: user.no_hp || '',
@@ -77,28 +84,37 @@ export default function KelolaUser() {
 
   const handleSaveUser = async (e) => {
     e.preventDefault();
+    const payload = {
+      ...formData,
+      kamar_id: formData.role === 'penghuni' && formData.kamar_id ? Number(formData.kamar_id) : null
+    };
     if (editingUserId) {
       try {
-        await api.updateUser(editingUserId, formData);
+        await api.updateUser(editingUserId, payload);
         loadUsers();
       } catch (err) {
-        setUsers(users.map(u => u.id === editingUserId ? { ...u, ...formData } : u));
+        setUsers(users.map(u => u.id === editingUserId ? { ...u, ...payload } : u));
       }
       setIsModalOpen(false);
     } else {
       try {
-        await api.createUser(formData);
+        await api.createUser(payload);
         loadUsers();
       } catch (err) {
-        setUsers([...users, { id: Date.now(), ...formData }]);
+        setUsers([...users, { id: Date.now(), ...payload }]);
       }
       setIsModalOpen(false);
     }
   };
 
-  const handleDeleteUser = (id) => {
+  const handleDeleteUser = async (id) => {
     if (window.confirm('Apakah Anda yakin ingin menghapus data pengguna ini?')) {
-      setUsers(users.filter(u => u.id !== id));
+      try {
+        await api.deleteUser(id);
+        loadUsers();
+      } catch {
+        setUsers(users.filter(u => u.id !== id));
+      }
     }
   };
 
@@ -340,6 +356,34 @@ export default function KelolaUser() {
                   </select>
                 </div>
               </div>
+
+              {formData.role === 'penghuni' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--color-neutral)', textTransform: 'uppercase' }}>
+                    Penempatan Gedung &amp; Kamar
+                  </label>
+                  <select
+                    value={formData.kamar_id}
+                    onChange={(e) => setFormData({ ...formData, kamar_id: e.target.value })}
+                    style={{
+                      height: '42px',
+                      backgroundColor: 'var(--color-surface-l2)',
+                      color: 'var(--color-text-primary)',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--color-border)',
+                      padding: '0 12px',
+                      fontSize: '13px'
+                    }}
+                  >
+                    <option value="">Belum ditempatkan</option>
+                    {kamars.map((room) => (
+                      <option key={room.id} value={room.id}>
+                        {room.gedung_nama || 'Gedung'} · Lantai {room.lantai} · Kamar {room.nomor_kamar} ({room.jumlah_penghuni ?? 0}/{room.kapasitas})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <Input
