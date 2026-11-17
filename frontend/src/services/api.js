@@ -116,6 +116,15 @@ export const api = {
   submitPresensi: (data) => apiRequest('/presensis', { method: 'POST', body: JSON.stringify(data) }),
   getMyPresensi: () => apiRequest('/presensis/my-history'),
   getTodayStatus: () => apiRequest('/presensis/today-status'),
+  getFasilReport: (params) => {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        searchParams.append(key, value);
+      }
+    });
+    return apiRequest(`/presensis/report?${searchParams.toString()}`);
+  },
 
   // Izin
   submitIzin: (formData) => apiRequest('/izins', { method: 'POST', body: formData, isFormData: true }),

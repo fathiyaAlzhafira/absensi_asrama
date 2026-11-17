@@ -90,6 +90,7 @@ return function (RouteBuilder $routes): void {
         $builder->connect('/auth/logout', ['controller' => 'Auth', 'action' => 'logout']);
 
         // Presensi
+        $builder->connect('/presensis/report', ['controller' => 'Presensis', 'action' => 'report']);
         $builder->connect('/presensis/my-history', ['controller' => 'Presensis', 'action' => 'myHistory']);
         $builder->connect('/presensis/today-status', ['controller' => 'Presensis', 'action' => 'todayStatus']);
         $builder->connect('/presensis', ['controller' => 'Presensis', 'action' => 'add']);
