@@ -77,15 +77,23 @@ export default function Button({
       onMouseEnter={(e) => {
         if (!disabled) {
           e.currentTarget.style.transform = 'scale(1.03)';
-          if (variant === 'primary') e.currentTarget.style.backgroundColor = 'var(--color-primary-hover)';
-          if (variant === 'ghost') e.currentTarget.style.color = '#FFFFFF';
+          if (variant === 'primary') {
+            e.currentTarget.style.backgroundColor = 'var(--color-primary-hover)';
+          } else if (variant === 'ghost') {
+            e.currentTarget.style.backgroundColor = 'var(--color-surface-l2)';
+            e.currentTarget.style.color = style?.color || 'var(--color-text-primary)';
+          }
         }
       }}
       onMouseLeave={(e) => {
         if (!disabled) {
           e.currentTarget.style.transform = 'scale(1)';
-          if (variant === 'primary') e.currentTarget.style.backgroundColor = 'var(--color-primary)';
-          if (variant === 'ghost') e.currentTarget.style.color = 'var(--color-neutral)';
+          if (variant === 'primary') {
+            e.currentTarget.style.backgroundColor = style?.backgroundColor || 'var(--color-primary)';
+          } else if (variant === 'ghost') {
+            e.currentTarget.style.backgroundColor = style?.backgroundColor || 'transparent';
+            e.currentTarget.style.color = style?.color || 'var(--color-neutral)';
+          }
         }
       }}
     >

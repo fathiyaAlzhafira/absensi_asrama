@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 
 /**
  * Green Deck Input Component
@@ -22,6 +23,10 @@ export default function Input({
   ...rest
 }) {
   const [isFocused, setIsFocused] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
+  const isPassword = type === 'password';
+  const resolvedType = isPassword ? (showPassword ? 'text' : 'password') : type;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%', ...style }}>
@@ -55,7 +60,7 @@ export default function Input({
           </div>
         )}
         <input
-          type={type}
+          type={resolvedType}
           name={name}
           autoComplete={autoComplete}
           value={value}
@@ -76,13 +81,36 @@ export default function Input({
             border: isFocused ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
             borderRadius: 'var(--radius-sm)',
             paddingLeft: Icon ? '40px' : '12px',
-            paddingRight: '12px',
+            paddingRight: isPassword ? '40px' : '12px',
             fontSize: '14px',
             fontFamily: 'var(--font-family)',
             outline: 'none',
             transition: 'border-color var(--transition-fast)'
           }}
         />
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setShowPassword((prev) => !prev)}
+            tabIndex={-1}
+            aria-label={showPassword ? 'Sembunyikan kata sandi' : 'Lihat kata sandi'}
+            title={showPassword ? 'Sembunyikan kata sandi' : 'Lihat kata sandi'}
+            style={{
+              position: 'absolute',
+              right: '10px',
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--color-neutral)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '4px'
+            }}
+          >
+            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+          </button>
+        )}
       </div>
       {error && (
         <span style={{ fontSize: '12px', color: 'var(--color-error)' }}>

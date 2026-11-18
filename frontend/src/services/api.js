@@ -23,7 +23,7 @@ export async function apiRequest(endpoint, options = {}) {
     }
   };
 
-  // Coba ke /api (Vite proxy) terlebih dahulu. Fallback ke http://localhost:8765/api
+  // Coba ke /api (Vite proxy) terlebih dahulu. Fallback ke http://127.0.0.1:8765/api
   // hanya dipakai jika koneksi jaringan terputus, bukan saat server membalas error validasi.
   let response;
   try {
@@ -66,7 +66,6 @@ export const api = {
     } catch (err) {
       // Offline fallback cerdas jika backend CakePHP sedang offline / belum dinyalakan
       const id = (credentials.email || credentials.nim || '').toLowerCase().trim();
-      const pwd = credentials.password || '';
 
       if (id.includes('admin') || id === '1') {
         return {
@@ -120,6 +119,8 @@ export const api = {
   getProfile: () => apiRequest('/auth/profile'),
   updateProfile: (data) => apiRequest('/auth/profile', { method: 'PUT', body: JSON.stringify(data) }),
   changePassword: (data) => apiRequest('/auth/change-password', { method: 'POST', body: JSON.stringify(data) }),
+  forgotPassword: (data) => apiRequest('/auth/forgot-password', { method: 'POST', body: JSON.stringify(data) }),
+  resetPassword: (data) => apiRequest('/auth/reset-password', { method: 'POST', body: JSON.stringify(data) }),
   logout: () => apiRequest('/auth/logout', { method: 'POST' }).catch(() => ({})),
 
   // Presensi
@@ -179,5 +180,17 @@ export const api = {
 
   // Pengaturan Jadwal Presensi
   getPengaturanPresensi: () => apiRequest('/pengaturan-presensi'),
-  updatePengaturanPresensi: (data) => apiRequest('/pengaturan-presensi', { method: 'PUT', body: JSON.stringify(data) })
+  updatePengaturanPresensi: (data) => apiRequest('/pengaturan-presensi', { method: 'PUT', body: JSON.stringify(data) }),
+
+  // Dashboard Administrator (Analytics)
+  getDashboardStats: (params = {}) => {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, val]) => {
+      if (val !== undefined && val !== null && val !== '') {
+        searchParams.append(key, val);
+      }
+    });
+    const queryString = searchParams.toString();
+    return apiRequest(`/admin/dashboard/stats${queryString ? `?${queryString}` : ''}`);
+  }
 };

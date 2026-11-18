@@ -88,6 +88,8 @@ return function (RouteBuilder $routes): void {
         $builder->connect('/auth/login', ['controller' => 'Auth', 'action' => 'login']);
         $builder->connect('/auth/profile', ['controller' => 'Auth', 'action' => 'profile']);
         $builder->connect('/auth/change-password', ['controller' => 'Auth', 'action' => 'changePassword']);
+        $builder->connect('/auth/forgot-password', ['controller' => 'Auth', 'action' => 'forgotPassword']);
+        $builder->connect('/auth/reset-password', ['controller' => 'Auth', 'action' => 'resetPassword']);
         $builder->connect('/auth/logout', ['controller' => 'Auth', 'action' => 'logout']);
 
         // Presensi
@@ -157,6 +159,9 @@ return function (RouteBuilder $routes): void {
         $builder->connect('/users/add', ['controller' => 'Users', 'action' => 'add']);
         $builder->connect('/users/{id}', ['controller' => 'Users', 'action' => 'edit'])->setPass(['id'])->setMethods(['PUT', 'POST']);
         $builder->connect('/users/{id}/delete', ['controller' => 'Users', 'action' => 'delete'])->setPass(['id'])->setMethods(['DELETE', 'POST']);
+
+        // Dashboard Admin (Analytics & Governance)
+        $builder->connect('/admin/dashboard/stats', ['controller' => 'DashboardAdmin', 'action' => 'stats']);
 
         $builder->fallbacks();
     });
