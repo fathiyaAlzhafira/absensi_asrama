@@ -64,7 +64,7 @@ class PresensisController extends ApiController
                 'Izins.status' => 'pending',
             ])
             ->contain(['Users' => ['Kamars']])
-            ->order(['Izins.created_at' => 'ASC'])
+            ->orderBy(['Izins.created_at' => 'ASC'])
             ->all();
 
         $totalPendingIzin = count($pendingIzins);
@@ -255,7 +255,7 @@ class PresensisController extends ApiController
             $kamarsList = $kamarsTable->find()
                 ->select(['id', 'nomor_kamar'])
                 ->where(['Kamars.gedung_id' => $gedung->id])
-                ->order(['Kamars.nomor_kamar' => 'ASC'])
+                ->orderBy(['Kamars.nomor_kamar' => 'ASC'])
                 ->all()
                 ->map(fn($k) => [
                     'id' => $k->id,
@@ -267,7 +267,7 @@ class PresensisController extends ApiController
             $kamarsTable = $this->fetchTable('Kamars');
             $kamarsList = $kamarsTable->find()
                 ->select(['id', 'nomor_kamar', 'gedung_id'])
-                ->order(['Kamars.nomor_kamar' => 'ASC'])
+                ->orderBy(['Kamars.nomor_kamar' => 'ASC'])
                 ->all()
                 ->map(fn($k) => [
                     'id' => $k->id,
@@ -317,7 +317,7 @@ class PresensisController extends ApiController
             ]);
         }
 
-        $query->order([
+        $query->orderBy([
             'Presensis.tanggal' => 'DESC',
             'Presensis.waktu' => 'DESC',
             'Presensis.id' => 'DESC',
@@ -480,6 +480,223 @@ class PresensisController extends ApiController
                 : (string)$p->created_at,
         ]);
     }
+
+    /**
+     * Laporan Rekap Presensi Fasilitator & Admin
+     * GET /api/presensis/laporan
+     *
+     * Menampilkan rekapitulasi presensi penghuni berdasarkan gedung binaan
+     * dengan filter rentang tanggal, sesi, kamar, dan pencarian.
+     */
+    public function laporan(): Response
+    {
+        $user = $this->requireAuth(['fasil', 'admin']);
+        if (!$user) {
+            return $this->authErrorResponse;
+        }
+
+        $presensisTable = $this->fetchTable('Presensis');
+        $query = $presensisTable->find()
+            ->contain([
+                'Users' => [
+                    'Kamars' => [
+                        'Gedungs'
+                    ]
+                ]
+            ]);
+
+        $gedungInfo = null;
+        $kamarsList = [];
+
+        if ($user->role === 'fasil') {
+            $gedung = $this->getFasilGedung($user);
+            if (!$gedung) {
+                return $this->authErrorResponse;
+            }
+
+            $gedungInfo = [
+                'id' => $gedung->id,
+                'nama' => $gedung->nama,
+            ];
+
+            $penghuniIds = $this->getPenghuniUserIdsByGedung((int)$gedung->id);
+            if (empty($penghuniIds)) {
+                return $this->jsonSuccess([
+                    'gedung' => $gedungInfo,
+                    'kamars' => [],
+                    'ringkasan' => [
+                        'total_presensi' => 0,
+                        'jumlah_hadir' => 0,
+                        'jumlah_terlambat' => 0,
+                        'total_hadir' => 0,
+                        'jumlah_izin' => 0,
+                        'jumlah_tidak_hadir' => 0,
+                        'persentase_kehadiran' => 0.0,
+                    ],
+                    'filter_terpasang' => [
+                        'start_date' => $this->request->getQuery('start_date') ?: $this->request->getQuery('tanggal_mulai'),
+                        'end_date' => $this->request->getQuery('end_date') ?: $this->request->getQuery('tanggal_akhir'),
+                        'sesi' => $this->request->getQuery('sesi') ?: 'Semua',
+                        'kamar' => $this->request->getQuery('kamar') ?: 'Semua',
+                    ],
+                    'data' => [],
+                ]);
+            }
+
+            $query->where(['Presensis.user_id IN' => $penghuniIds]);
+
+            // Ambil daftar nomor kamar di gedung binaan untuk opsi dropdown filter
+            $kamarsTable = $this->fetchTable('Kamars');
+            $kamarsList = $kamarsTable->find()
+                ->select(['id', 'nomor_kamar'])
+                ->where(['Kamars.gedung_id' => $gedung->id])
+                ->orderBy(['Kamars.nomor_kamar' => 'ASC'])
+                ->all()
+                ->map(fn($k) => [
+                    'id' => $k->id,
+                    'nomor_kamar' => $k->nomor_kamar,
+                ])
+                ->toArray();
+        } else {
+            // Admin: ambil semua kamar
+            $kamarsTable = $this->fetchTable('Kamars');
+            $kamarsList = $kamarsTable->find()
+                ->select(['id', 'nomor_kamar', 'gedung_id'])
+                ->orderBy(['Kamars.nomor_kamar' => 'ASC'])
+                ->all()
+                ->map(fn($k) => [
+                    'id' => $k->id,
+                    'nomor_kamar' => $k->nomor_kamar,
+                ])
+                ->toArray();
+        }
+
+        // Filter rentang tanggal
+        $startDate = $this->request->getQuery('start_date') ?: $this->request->getQuery('tanggal_mulai');
+        $endDate = $this->request->getQuery('end_date') ?: $this->request->getQuery('tanggal_akhir');
+
+        if (!empty($startDate)) {
+            $query->where(['Presensis.tanggal >=' => $startDate]);
+        }
+        if (!empty($endDate)) {
+            $query->where(['Presensis.tanggal <=' => $endDate]);
+        }
+
+        // Filter sesi (Subuh / Malam)
+        $sesiParam = $this->request->getQuery('sesi');
+        if (!empty($sesiParam) && $sesiParam !== 'Semua' && $sesiParam !== 'all') {
+            $query->where(['LOWER(Presensis.sesi)' => strtolower($sesiParam)]);
+        }
+
+        // Filter status kehadiran jika ada
+        $statusParam = $this->request->getQuery('status');
+        if (!empty($statusParam) && $statusParam !== 'Semua' && $statusParam !== 'all') {
+            $query->where(['LOWER(Presensis.status)' => strtolower($statusParam)]);
+        }
+
+        // Filter kamar
+        $kamarParam = $this->request->getQuery('kamar_id') ?: $this->request->getQuery('kamar');
+        if (!empty($kamarParam) && $kamarParam !== 'Semua' && $kamarParam !== 'all') {
+            if (is_numeric($kamarParam)) {
+                $query->where(['Users.kamar_id' => (int)$kamarParam]);
+            } else {
+                $query->matching('Users.Kamars', function ($q) use ($kamarParam) {
+                    return $q->where(['Kamars.nomor_kamar' => $kamarParam]);
+                });
+            }
+        }
+
+        // Filter pencarian teks (Nama atau NIM)
+        $search = trim((string)($this->request->getQuery('search') ?: $this->request->getQuery('q')));
+        if ($search !== '') {
+            $query->where([
+                'OR' => [
+                    'Users.nama LIKE' => '%' . $search . '%',
+                    'Users.nim LIKE' => '%' . $search . '%',
+                ],
+            ]);
+        }
+
+        $query->orderBy([
+            'Presensis.tanggal' => 'DESC',
+            'Presensis.waktu' => 'DESC',
+            'Presensis.id' => 'DESC',
+        ]);
+
+        $results = $query->all();
+
+        $jumlahHadir = 0;
+        $jumlahTerlambat = 0;
+        $jumlahIzin = 0;
+        $jumlahTidakHadir = 0;
+        $formattedData = [];
+
+        foreach ($results as $p) {
+            $status = strtolower((string)$p->status);
+            if ($status === 'hadir') {
+                $jumlahHadir++;
+            } elseif ($status === 'terlambat') {
+                $jumlahTerlambat++;
+            } elseif ($status === 'izin') {
+                $jumlahIzin++;
+            } elseif ($status === 'alpa') {
+                $jumlahTidakHadir++;
+            }
+
+            $waktuStr = '-';
+            if ($p->waktu instanceof \DateTimeInterface) {
+                $waktuStr = $p->waktu->format('H:i') . ' WIB';
+            } elseif (!empty($p->waktu)) {
+                $waktuStr = substr((string)$p->waktu, 0, 5) . ' WIB';
+            }
+
+            $tanggalStr = '';
+            if ($p->tanggal instanceof \DateTimeInterface) {
+                $tanggalStr = $p->tanggal->format('Y-m-d');
+            } else {
+                $tanggalStr = (string)$p->tanggal;
+            }
+
+            $formattedData[] = [
+                'id' => $p->id,
+                'user_id' => $p->user_id,
+                'nama' => $p->user ? $p->user->nama : '-',
+                'nim' => $p->user ? $p->user->nim : '-',
+                'kamar' => ($p->user && $p->user->kamar) ? $p->user->kamar->nomor_kamar : '-',
+                'gedung' => ($p->user && $p->user->kamar && $p->user->kamar->gedung) ? $p->user->kamar->gedung->nama : ($gedungInfo['nama'] ?? '-'),
+                'sesi' => ucfirst(strtolower((string)$p->sesi)),
+                'tanggal' => $tanggalStr,
+                'waktu' => $waktuStr,
+                'status' => $status,
+                'keterangan' => $p->keterangan ?? '-',
+            ];
+        }
+
+        $totalPresensi = count($formattedData);
+        $totalHadirKeseluruhan = $jumlahHadir + $jumlahTerlambat;
+        $persentaseKehadiran = $totalPresensi > 0 ? round(($totalHadirKeseluruhan / $totalPresensi) * 100, 1) : 0.0;
+
+        return $this->jsonSuccess([
+            'gedung' => $gedungInfo,
+            'kamars' => $kamarsList,
+            'ringkasan' => [
+                'total_presensi' => $totalPresensi,
+                'jumlah_hadir' => $jumlahHadir,
+                'jumlah_terlambat' => $jumlahTerlambat,
+                'total_hadir' => $totalHadirKeseluruhan,
+                'jumlah_izin' => $jumlahIzin,
+                'jumlah_tidak_hadir' => $jumlahTidakHadir,
+                'persentase_kehadiran' => $persentaseKehadiran,
+            ],
+            'filter_terpasang' => [
+                'start_date' => $startDate,
+                'end_date' => $endDate,
+                'sesi' => $sesiParam ?: 'Semua',
+                'kamar' => $kamarParam ?: 'Semua',
+            ],
+            'data' => $formattedData,
+        ]);
+    }
     /**
      * Riwayat Presensi Pengguna
      * GET /api/presensis/my-history
@@ -496,7 +713,7 @@ class PresensisController extends ApiController
 
         $list = $presensisTable->find()
             ->where(['Presensis.user_id' => $userId])
-            ->order(['Presensis.tanggal' => 'DESC', 'Presensis.waktu' => 'DESC'])
+            ->orderBy(['Presensis.tanggal' => 'DESC', 'Presensis.waktu' => 'DESC'])
             ->all();
 
         return $this->jsonSuccess($list->toArray());

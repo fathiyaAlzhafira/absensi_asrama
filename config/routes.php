@@ -93,6 +93,7 @@ return function (RouteBuilder $routes): void {
         $builder->connect('/presensis/fasil-dashboard', ['controller' => 'Presensis', 'action' => 'fasilDashboard']);
         $builder->connect('/presensis/monitoring', ['controller' => 'Presensis', 'action' => 'monitoring'])->setMethods(['GET']);
         $builder->connect('/presensis/monitoring/{id}', ['controller' => 'Presensis', 'action' => 'monitoringDetail'])->setPass(['id'])->setMethods(['GET']);
+        $builder->connect('/presensis/laporan', ['controller' => 'Presensis', 'action' => 'laporan'])->setMethods(['GET']);
         $builder->connect('/presensis/my-history', ['controller' => 'Presensis', 'action' => 'myHistory']);
         $builder->connect('/presensis/today-status', ['controller' => 'Presensis', 'action' => 'todayStatus']);
         $builder->connect('/presensis', ['controller' => 'Presensis', 'action' => 'add']);
