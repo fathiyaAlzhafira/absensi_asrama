@@ -1,26 +1,45 @@
+
 /**
  * Base API Service for Absensi Asrama Unand
- * Menghubungkan Frontend React ke Backend CakePHP
+ * Menghubungkan Frontend React ke Backend CakePHP.
  */
 
 const PRIMARY_API_URL = '/api';
 const FALLBACK_API_URL = 'http://127.0.0.1:8765/api';
 
+/**
+ * Membersihkan sesi lokal ketika backend mengembalikan HTTP 401.
+ */
+function clearInvalidSession() {
+  localStorage.removeItem('asrama_token');
+  localStorage.removeItem('asrama_auth_user');
+
+  window.dispatchEvent(
+    new Event('asrama:unauthorized')
+  );
+}
+
 export async function apiRequest(endpoint, options = {}) {
   const token = localStorage.getItem('asrama_token');
 
   const defaultHeaders = {
-    'Accept': 'application/json',
-    ...(options.isFormData ? {} : { 'Content-Type': 'application/json' }),
-    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    Accept: 'application/json',
+
+    ...(options.isFormData
+      ? {}
+      : { 'Content-Type': 'application/json' }),
+
+    ...(token
+      ? { Authorization: `Bearer ${token}` }
+      : {}),
   };
 
   const config = {
     ...options,
     headers: {
       ...defaultHeaders,
-      ...options.headers
-    }
+      ...options.headers,
+    },
   };
 
   // Coba ke /api (Vite proxy) terlebih dahulu. Fallback ke http://127.0.0.1:8765/api
@@ -37,84 +56,38 @@ export async function apiRequest(endpoint, options = {}) {
     }
   }
 
+  const responseData = await response.json().catch(() => ({}));
+
+  if (response.status === 401 && endpoint !== '/auth/login') {
+    clearInvalidSession();
+  }
+
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    let errorMsg = errorData.message;
-    if (!errorMsg && errorData.errors) {
-      errorMsg = Object.values(errorData.errors)
+    let errorMsg = responseData.message;
+    if (!errorMsg && responseData.errors) {
+      errorMsg = Object.values(responseData.errors)
         .map((err) => (typeof err === 'object' ? Object.values(err).join(', ') : err))
         .join(', ');
     }
     const error = new Error(errorMsg || `Permintaan gagal (status: ${response.status})`);
     error.status = response.status;
-    error.errors = errorData.errors;
+    error.errors = responseData.errors;
     throw error;
   }
 
-  return await response.json();
+  return responseData;
 }
 
-// Shortcut API Methods
+// Shortcut API Methods.
 export const api = {
-  // Auth
-  login: async (credentials) => {
-    try {
-      return await apiRequest('/auth/login', { 
-        method: 'POST', 
-        body: JSON.stringify(credentials) 
-      });
-    } catch (err) {
-      // Offline fallback cerdas jika backend CakePHP sedang offline / belum dinyalakan
-      const id = (credentials.email || credentials.nim || '').toLowerCase().trim();
-
-      if (id.includes('admin') || id === '1') {
-        return {
-          status: 'success',
-          message: 'Login berhasil (Mode offline).',
-          data: {
-            id: 1,
-            nama: 'Administrator Asrama',
-            nim: null,
-            email: 'admin@unand.ac.id',
-            role: 'admin',
-            gedung: 'Semua Gedung Asrama',
-            token: 'offline_token_admin'
-          }
-        };
-      } else if (id.includes('fasil') || id.includes('rizky') || id === '2') {
-        return {
-          status: 'success',
-          message: 'Login berhasil (Mode offline).',
-          data: {
-            id: 2,
-            nama: 'Fasil Muhammad Rizky',
-            nim: '2111522001',
-            email: 'fasil.rizky@unand.ac.id',
-            role: 'fasil',
-            gedung: 'RPX',
-            token: 'offline_token_fasil'
-          }
-        };
-      } else if (id.includes('ahmad') || id.includes('2311521001') || id.includes('student') || id === '4' || id === '') {
-        return {
-          status: 'success',
-          message: 'Login berhasil (Mode offline).',
-          data: {
-            id: 4,
-            nama: 'Ahmad Fauzan',
-            nim: '2311521001',
-            email: 'ahmad.fauzan@student.unand.ac.id',
-            role: 'penghuni',
-            kamar_id: 1,
-            nomor_kamar: 'A-101',
-            gedung: 'RPX',
-            token: 'offline_token_penghuni'
-          }
-        };
-      }
-      throw new Error('Akun tidak ditemukan. Periksa kembali Email/NIM Anda.');
-    }
-  },
+  // =========================
+  // AUTHENTICATION
+  // =========================
+  login: (credentials) =>
+    apiRequest('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(credentials),
+    }),
 
   getProfile: () => apiRequest('/auth/profile'),
   updateProfile: (data) => apiRequest('/auth/profile', { method: 'PUT', body: JSON.stringify(data) }),
@@ -123,10 +96,44 @@ export const api = {
   resetPassword: (data) => apiRequest('/auth/reset-password', { method: 'POST', body: JSON.stringify(data) }),
   logout: () => apiRequest('/auth/logout', { method: 'POST' }).catch(() => ({})),
 
-  // Presensi
-  submitPresensi: (data) => apiRequest('/presensis', { method: 'POST', body: JSON.stringify(data) }),
+  // =========================
+  // PRESENSI
+  // =========================
+  submitPresensi: (data) =>
+    apiRequest('/presensis', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
   getMyPresensi: () => apiRequest('/presensis/my-history'),
   getTodayStatus: () => apiRequest('/presensis/today-status'),
+  getFasilDashboard: () => apiRequest('/presensis/fasil-dashboard'),
+
+  getPresensiMonitoring: (params = {}) => {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, val]) => {
+      if (val !== undefined && val !== null && val !== '') {
+        searchParams.append(key, val);
+      }
+    });
+    const qs = searchParams.toString();
+    return apiRequest(`/presensis/monitoring${qs ? `?${qs}` : ''}`);
+  },
+
+  getPresensiDetail: (id) =>
+    apiRequest(`/presensis/monitoring/${id}`),
+
+  getLaporanPresensi: (params = {}) => {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, val]) => {
+      if (val !== undefined && val !== null && val !== '') {
+        searchParams.append(key, val);
+      }
+    });
+    const qs = searchParams.toString();
+    return apiRequest(`/presensis/laporan${qs ? `?${qs}` : ''}`);
+  },
+
   getPresensiPhoto: async (id) => {
     const token = localStorage.getItem('asrama_token');
     const headers = {
@@ -149,20 +156,80 @@ export const api = {
     return URL.createObjectURL(await response.blob());
   },
 
-  // Izin
-  submitIzin: (formData) => apiRequest('/izins', { method: 'POST', body: formData, isFormData: true }),
+  // =========================
+  // IZIN
+  // =========================
+  submitIzin: (formData) =>
+    apiRequest('/izins', {
+      method: 'POST',
+      body: formData,
+      isFormData: true,
+    }),
+
   getMyIzins: () => apiRequest('/izins/my-permits'),
   getPendingIzins: () => apiRequest('/izins/pending'),
-  verifyIzin: (id, status, catatan) => apiRequest(`/izins/${id}/verify`, { method: 'POST', body: JSON.stringify({ status, catatan }) }),
+
+  getIzins: (params = {}) => {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, val]) => {
+      if (val !== undefined && val !== null && val !== '') {
+        searchParams.append(key, val);
+      }
+    });
+    const qs = searchParams.toString();
+    return apiRequest(`/izins/list${qs ? `?${qs}` : ''}`);
+  },
+
+  getIzinDetail: (id) =>
+    apiRequest(`/izins/${id}`),
+
+  verifyIzin: (id, status, catatan) =>
+    apiRequest(`/izins/${id}/verify`, {
+      method: 'POST',
+      body: JSON.stringify({ status, catatan }),
+    }),
+
   cancelIzin: (id) => apiRequest(`/izins/${id}`, { method: 'DELETE' }),
 
-  // Users (Admin)
-  getUsers: (role) => apiRequest(`/users${role ? `?role=${role}` : ''}`),
-  createUser: (data) => apiRequest('/users/add', { method: 'POST', body: JSON.stringify(data) }),
+  // =========================
+  // USERS (ADMIN & FASIL)
+  // =========================
+  getUsers: (role) =>
+    apiRequest(
+      `/users${role ? `?role=${encodeURIComponent(role)}` : ''}`
+    ),
+
+  getPenghuni: (params = {}) => {
+    const searchParams = new URLSearchParams({ role: 'penghuni' });
+    Object.entries(params).forEach(([key, val]) => {
+      if (val !== undefined && val !== null && val !== '') {
+        searchParams.set(key, val);
+      }
+    });
+    return apiRequest(`/users?${searchParams.toString()}`);
+  },
+
+  getPenghuniDetail: (id) =>
+    apiRequest(`/users/${id}/detail`),
+
+  getPenghuniPresensis: (id) =>
+    apiRequest(`/users/${id}/presensis`),
+
+  getPenghuniIzins: (id) =>
+    apiRequest(`/users/${id}/izins`),
+
+  createUser: (data) =>
+    apiRequest('/users/add', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
   updateUser: (id, data) => apiRequest(`/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteUser: (id) => apiRequest(`/users/${id}/delete`, { method: 'DELETE' }),
 
-  // Buildings and rooms
+  // =========================
+  // BUILDINGS, FLOORS & ROOMS
+  // =========================
   getGedungs: () => apiRequest('/gedungs'),
   getMyBuildingAssignment: () => apiRequest('/gedungs/my-assignment'),
   createGedung: (data) => apiRequest('/gedungs', { method: 'POST', body: JSON.stringify(data) }),
@@ -178,11 +245,15 @@ export const api = {
   updateLantai: (id, data) => apiRequest(`/lantais/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteLantai: (id) => apiRequest(`/lantais/${id}`, { method: 'DELETE' }),
 
-  // Pengaturan Jadwal Presensi
+  // =========================
+  // PENGATURAN JADWAL PRESENSI
+  // =========================
   getPengaturanPresensi: () => apiRequest('/pengaturan-presensi'),
   updatePengaturanPresensi: (data) => apiRequest('/pengaturan-presensi', { method: 'PUT', body: JSON.stringify(data) }),
 
-  // Dashboard Administrator (Analytics)
+  // =========================
+  // DASHBOARD ADMINISTRATOR
+  // =========================
   getDashboardStats: (params = {}) => {
     const searchParams = new URLSearchParams();
     Object.entries(params).forEach(([key, val]) => {

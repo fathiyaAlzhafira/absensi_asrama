@@ -54,6 +54,10 @@ class GedungsTable extends Table
             'className' => 'Users',
             'foreignKey' => 'id_user',
         ]);
+        $this->belongsTo('Users', [
+            'foreignKey' => 'id_user',
+            'joinType' => 'LEFT',
+        ]);
     }
 
     /**

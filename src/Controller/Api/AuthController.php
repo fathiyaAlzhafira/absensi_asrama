@@ -4,14 +4,19 @@ declare(strict_types=1);
 namespace App\Controller\Api;
 
 use Cake\Http\Response;
+use DateTimeImmutable;
+use DateTimeZone;
 
 class AuthController extends ApiController
 {
     private const LEGACY_DEMO_PASSWORD_HASH = '$2y$10$w8mPq4kP8L1iK2hY.y5dZe9u5M1VlQo8u5jQk3yX4zJ2bK1aO2fWe';
 
     /**
-     * Endpoint Login
      * POST /api/auth/login
+     *
+     * Login menggunakan email atau NIM.
+     * Token asli hanya dikirim ke frontend satu kali.
+     * Database hanya menyimpan SHA-256 token.
      */
     public function login(): Response
     {
@@ -22,46 +27,94 @@ class AuthController extends ApiController
         }
 
         $data = $this->request->getData();
+
         $identity = trim((string)($data['email'] ?? $data['nim'] ?? ''));
         $password = (string)($data['password'] ?? '');
 
-        if (empty($identity) || empty($password)) {
-            return $this->jsonError('Email/NIM dan password wajib diisi.', 422);
+        if ($identity === '' || $password === '') {
+            return $this->jsonError(
+                'Email/NIM dan password wajib diisi.',
+                422
+            );
         }
 
         $usersTable = $this->fetchTable('Users');
+
+        // Cari akun berdasarkan email atau NIM.
         $user = $usersTable->find()
-            ->where(['OR' => [
-                'Users.email' => $identity,
-                'Users.nim' => $identity,
-                'Users.nama LIKE' => '%' . $identity . '%',
-                'Users.email LIKE' => $identity . '@%'
-            ]])
+            ->where([
+                'OR' => [
+                    'Users.email' => $identity,
+                    'Users.nim' => $identity,
+                ],
+            ])
             ->contain([
-                'Kamars' => ['Gedungs']
+                'Kamars' => ['Gedungs'],
             ])
             ->first();
 
         if (!$user) {
-            return $this->jsonError('Akun tidak ditemukan. Masukkan Email, NIM, atau Nama Anda.', 401);
+            return $this->jsonError(
+                'Email/NIM atau password salah.',
+                401
+            );
         }
 
         if (!$this->verifyStoredPassword($password, (string)$user->password)) {
-            return $this->jsonError('Password salah. Masukkan password yang terdaftar.', 401);
+            return $this->jsonError(
+                'Email/NIM atau password salah.',
+                401
+            );
         }
 
-        $token = bin2hex(random_bytes(32));
-        $tokenRecord = $this->fetchTable('AuthTokens')->newEntity([
+        // Pastikan role akun valid.
+        $allowedRoles = ['admin', 'fasil', 'penghuni'];
+
+        if (!in_array($user->role, $allowedRoles, true)) {
+            return $this->jsonError(
+                'Role akun tidak valid.',
+                403
+            );
+        }
+
+        // Buat token acak yang tidak dapat ditebak.
+        $plainToken = bin2hex(random_bytes(32));
+
+        // Simpan hash token, bukan token aslinya.
+        $tokenHash = hash('sha256', $plainToken);
+
+        // Token berlaku selama 30 hari.
+        $now = new DateTimeImmutable('now', new DateTimeZone('Asia/Jakarta'));
+        $expiresAt = $now->modify('+30 days');
+
+        $tokensTable = $this->fetchTable('AuthTokens');
+
+        $tokenEntity = $tokensTable->newEntity([
             'user_id' => $user->id,
-            'token_hash' => hash('sha256', $token),
-            'expires_at' => (new \DateTimeImmutable('+30 days'))->format('Y-m-d H:i:s'),
-            'created_at' => (new \DateTimeImmutable())->format('Y-m-d H:i:s'),
+            'token_hash' => $tokenHash,
+            'expires_at' => $expiresAt->format('Y-m-d H:i:s'),
+            'created_at' => $now->format('Y-m-d H:i:s'),
         ]);
-        if (!$this->fetchTable('AuthTokens')->save($tokenRecord)) {
-            return $this->jsonError('Sesi login gagal dibuat. Silakan coba kembali.', 500);
+
+        if (!$tokensTable->save($tokenEntity)) {
+            return $this->jsonError(
+                'Gagal membuat sesi autentikasi.',
+                500
+            );
         }
 
-        // Buat payload user yang rapi untuk frontend
+        // Susun informasi gedung dan kamar.
+        $kamar = $user->kamar ?? null;
+        $gedung = $kamar ? ($kamar->gedung ?? null) : null;
+
+        // Jika fasilitator, ambil gedung binaan dari tabel gedungs berdasarkan id_user
+        if (!$gedung && $user->role === 'fasil') {
+            $gedungsTable = $this->fetchTable('Gedungs');
+            $gedung = $gedungsTable->find()
+                ->where(['Gedungs.id_user' => $user->id])
+                ->first();
+        }
+
         $userData = [
             'id' => $user->id,
             'nama' => $user->nama,
@@ -72,17 +125,25 @@ class AuthController extends ApiController
             'jekel' => $user->jekel,
             'no_hp' => $user->no_hp,
             'kamar_id' => $user->kamar_id,
-            'nomor_kamar' => $user->kamar ? $user->kamar->nomor_kamar : null,
-            'gedung' => ($user->kamar && $user->kamar->gedung) ? $user->kamar->gedung->nama : 'Asrama Unand',
-            'token' => $token
+            'nomor_kamar' => $kamar ? $kamar->nomor_kamar : null,
+            'gedung' => $gedung ? $gedung->nama : 'Asrama Unand',
+            'gedung_id' => $gedung ? $gedung->id : null,
+            'token' => $plainToken,
+            'token_type' => 'Bearer',
+            'expires_at' => $expiresAt->format(DATE_ATOM),
         ];
 
-        return $this->jsonSuccess($userData, 'Login berhasil. Selamat datang!');
+        return $this->jsonSuccess(
+            $userData,
+            'Login berhasil. Selamat datang!'
+        );
     }
 
     /**
-     * Endpoint Profil
      * GET /api/auth/profile
+     * PUT /api/auth/profile
+     *
+     * Profil hanya dapat diakses dengan token valid.
      */
     public function profile(): Response
     {
@@ -92,37 +153,62 @@ class AuthController extends ApiController
             return $this->response->withStatus(200);
         }
 
-        $user = $this->requireAuthenticatedUser();
-        if ($user instanceof Response) {
-            return $user;
+        $user = $this->authenticateUser();
+
+        if (!$user) {
+            return $this->jsonError(
+                'Sesi tidak valid atau sudah kedaluwarsa. Silakan login kembali.',
+                401
+            );
         }
 
-        $usersTable = $this->fetchTable('Users');
-        $user = $usersTable->find()->where(['Users.id' => $user->id])
-            ->contain(['Kamars' => ['Gedungs']])->first();
-
         if ($this->request->is('put')) {
-            $data = array_intersect_key(
-                $this->request->getData(),
-                array_flip(['no_hp', 'asal'])
+            $data = $this->request->getData();
+
+            $allowedFields = [
+                'nama',
+                'asal',
+                'jekel',
+                'no_hp',
+                'foto_profil',
+            ];
+
+            $safeData = array_intersect_key(
+                $data,
+                array_flip($allowedFields)
             );
-            $user = $usersTable->patchEntity($user, $data);
-            if ($usersTable->save($user)) {
-                return $this->jsonSuccess([
-                    'id' => $user->id,
-                    'nama' => $user->nama,
-                    'nim' => $user->nim,
-                    'email' => $user->email,
-                    'role' => $user->role,
-                    'asal' => $user->asal,
-                    'jekel' => $user->jekel,
-                    'no_hp' => $user->no_hp,
-                    'kamar_id' => $user->kamar_id,
-                    'nomor_kamar' => $user->kamar ? $user->kamar->nomor_kamar : null,
-                    'gedung' => ($user->kamar && $user->kamar->gedung) ? $user->kamar->gedung->nama : 'Asrama Unand',
-                ], 'Profil berhasil diperbarui.');
+
+            $usersTable = $this->fetchTable('Users');
+
+            $user = $usersTable->patchEntity(
+                $user,
+                $safeData,
+                ['fields' => $allowedFields]
+            );
+
+            if (!$usersTable->save($user)) {
+                return $this->jsonError(
+                    'Gagal memperbarui profil.',
+                    422,
+                    $user->getErrors()
+                );
             }
-            return $this->jsonError('Gagal memperbarui profil.', 422, $user->getErrors());
+
+            $user = $usersTable->find()
+                ->where(['Users.id' => $user->id])
+                ->contain(['Kamars' => ['Gedungs']])
+                ->first();
+        }
+
+        $kamar = $user->kamar ?? null;
+        $gedung = $kamar ? ($kamar->gedung ?? null) : null;
+
+        // Jika fasilitator, ambil gedung binaan dari tabel gedungs berdasarkan id_user
+        if (!$gedung && $user->role === 'fasil') {
+            $gedungsTable = $this->fetchTable('Gedungs');
+            $gedung = $gedungsTable->find()
+                ->where(['Gedungs.id_user' => $user->id])
+                ->first();
         }
 
         return $this->jsonSuccess([
@@ -134,9 +220,11 @@ class AuthController extends ApiController
             'asal' => $user->asal,
             'jekel' => $user->jekel,
             'no_hp' => $user->no_hp,
+            'foto_profil' => $user->foto_profil,
             'kamar_id' => $user->kamar_id,
-            'nomor_kamar' => $user->kamar ? $user->kamar->nomor_kamar : null,
-            'gedung' => ($user->kamar && $user->kamar->gedung) ? $user->kamar->gedung->nama : 'Asrama Unand',
+            'nomor_kamar' => $kamar ? $kamar->nomor_kamar : null,
+            'gedung' => $gedung ? $gedung->nama : 'Asrama Unand',
+            'gedung_id' => $gedung ? $gedung->id : null,
         ]);
     }
 
@@ -242,8 +330,9 @@ class AuthController extends ApiController
     }
 
     /**
-     * Endpoint Logout
      * POST /api/auth/logout
+     *
+     * Hapus token dari database sehingga token tidak bisa digunakan lagi.
      */
     public function logout(): Response
     {
@@ -258,14 +347,13 @@ class AuthController extends ApiController
         }
 
         $tokenHash = $this->bearerTokenHash();
-        if ($tokenHash === null) {
-            return $this->jsonError('Sesi login tidak valid atau telah berakhir.', 401);
+        if ($tokenHash !== null) {
+            $this->fetchTable('AuthTokens')->deleteAll([
+                'user_id' => $user->id,
+                'token_hash' => $tokenHash,
+            ]);
         }
 
-        $this->fetchTable('AuthTokens')->deleteAll([
-            'user_id' => $user->id,
-            'token_hash' => $tokenHash,
-        ]);
         return $this->jsonSuccess([], 'Logout berhasil.');
     }
 }

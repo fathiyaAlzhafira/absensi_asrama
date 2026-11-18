@@ -47,11 +47,15 @@ class UsersTable extends Table
 
         $this->belongsTo('Kamars', [
             'foreignKey' => 'kamar_id',
+            'joinType' => 'LEFT',
         ]);
         $this->hasMany('Izins', [
             'foreignKey' => 'user_id',
         ]);
         $this->hasMany('Presensis', [
+            'foreignKey' => 'user_id',
+        ]);
+        $this->hasMany('AuthTokens', [
             'foreignKey' => 'user_id',
         ]);
     }
