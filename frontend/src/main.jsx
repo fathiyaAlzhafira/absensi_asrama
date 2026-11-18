@@ -2,13 +2,16 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './styles/index.css'
 import App from './App.jsx'
-import { ThemeProvider } from './context/ThemeContext.jsx'
+import { ThemeProvider, resolveThemeForUser } from './context/ThemeContext.jsx'
 
-const savedTheme = localStorage.getItem('asrama_theme')
-const initialTheme = savedTheme === 'light' || savedTheme === 'dark'
-  ? savedTheme
-  : (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
-document.documentElement.dataset.theme = initialTheme
+let storedUser = null
+try {
+  const raw = localStorage.getItem('asrama_auth_user')
+  storedUser = raw ? JSON.parse(raw) : null
+} catch {
+  storedUser = null
+}
+document.documentElement.dataset.theme = resolveThemeForUser(storedUser)
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

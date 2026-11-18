@@ -125,7 +125,59 @@ class GedungsController extends ApiController
         if ($isActive !== null) {
             $building->is_active = $isActive;
         }
-        if (!$table->save($building)) {
+        $data = $this->request->getData();
+        $targetFloorCount = null;
+        if (array_key_exists('jumlah_lantai', $data) && $data['jumlah_lantai'] !== '' && $data['jumlah_lantai'] !== null) {
+            $targetFloorCount = filter_var($data['jumlah_lantai'], FILTER_VALIDATE_INT, [
+                'options' => ['min_range' => 1, 'max_range' => 50],
+            ]);
+            if ($targetFloorCount === false) {
+                return $this->jsonError('Jumlah lantai harus berupa bilangan bulat 1–50.', 422);
+            }
+        }
+
+        if ($targetFloorCount !== null) {
+            $occupiedFloorExceeds = $this->fetchTable('Kamars')->exists([
+                'gedung_id' => $building->id,
+                'lantai >' => $targetFloorCount,
+            ]);
+            if ($occupiedFloorExceeds) {
+                return $this->jsonError(
+                    'Jumlah lantai tidak dapat dikurangi karena masih ada kamar di lantai yang lebih tinggi.',
+                    409
+                );
+            }
+        }
+
+        $floors = $this->fetchTable('Lantais');
+        $saved = $table->getConnection()->transactional(function () use ($table, $building, $floors, $targetFloorCount): bool {
+            if (!$table->save($building)) {
+                return false;
+            }
+            if ($targetFloorCount !== null) {
+                $now = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+                for ($number = 1; $number <= $targetFloorCount; $number++) {
+                    if (!$floors->exists(['gedung_id' => $building->id, 'nomor_lantai' => $number])) {
+                        $floor = $floors->newEntity([
+                            'gedung_id' => $building->id,
+                            'nomor_lantai' => $number,
+                            'created_at' => $now,
+                            'updated_at' => $now,
+                        ]);
+                        if (!$floors->save($floor)) {
+                            return false;
+                        }
+                    }
+                }
+                $floors->deleteAll([
+                    'gedung_id' => $building->id,
+                    'nomor_lantai >' => $targetFloorCount,
+                ]);
+            }
+
+            return true;
+        });
+        if (!$saved) {
             return $this->jsonError($this->buildingError($building->getErrors(), 'Gagal memperbarui gedung.'), 422, $building->getErrors());
         }
 

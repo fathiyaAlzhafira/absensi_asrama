@@ -21,7 +21,7 @@ class IzinsController extends ApiController
 
         $list = $izinsTable->find()
             ->where(['Izins.user_id' => $user->id])
-            ->order(['Izins.created_at' => 'DESC'])
+            ->orderBy(['Izins.created_at' => 'DESC'])
             ->all();
 
         return $this->jsonSuccess($list->toArray());
@@ -63,13 +63,85 @@ class IzinsController extends ApiController
             return $this->jsonError('Tanggal mulai dan selesai izin wajib diisi.', 422);
         }
 
-        $today = date('Y-m-d');
+        $now = new \DateTimeImmutable('now', new \DateTimeZone('Asia/Jakarta'));
+        $today = $now->format('Y-m-d');
         if ($data['tanggal_mulai'] < $today) {
             return $this->jsonError('Tidak dapat mengajukan izin pada tanggal yang sudah lampau.', 422);
         }
 
         if (strtotime((string)$data['tanggal_selesai']) < strtotime((string)$data['tanggal_mulai'])) {
             return $this->jsonError('Tanggal selesai izin tidak boleh lebih awal dari tanggal mulai izin.', 422);
+        }
+
+        // Jika izin diajukan mulai hari ini, pastikan sesi presensi yang diajukan belum berakhir
+        if ($data['tanggal_mulai'] === $today) {
+            $schedule = $this->scheduleEndTimes();
+            $currentMinutes = ((int)$now->format('G') * 60) + (int)$now->format('i');
+
+            if ($sesi === 'subuh' && $currentMinutes >= $schedule['subuh_selesai_min']) {
+                return $this->jsonError(
+                    "Batas waktu Sesi Subuh hari ini (pukul {$schedule['jam_subuh_selesai']} WIB) sudah berakhir. Pengajuan izin hanya dapat dilakukan sebelum sesi presensi berakhir.",
+                    422
+                );
+            }
+            if ($sesi === 'malam' && $currentMinutes >= $schedule['malam_selesai_min']) {
+                return $this->jsonError(
+                    "Batas waktu Sesi Malam hari ini (pukul {$schedule['jam_malam_selesai']} WIB) sudah berakhir. Pengajuan izin hanya dapat dilakukan sebelum sesi presensi berakhir.",
+                    422
+                );
+            }
+            if ($sesi === 'semua') {
+                if ($currentMinutes >= $schedule['malam_selesai_min']) {
+                    return $this->jsonError(
+                        'Seluruh sesi presensi hari ini (Subuh & Malam) sudah berakhir. Silakan ajukan izin mulai tanggal besok.',
+                        422
+                    );
+                }
+                if ($currentMinutes >= $schedule['subuh_selesai_min']) {
+                    return $this->jsonError(
+                        "Sesi Subuh hari ini (pukul {$schedule['jam_subuh_selesai']} WIB) sudah ditutup sehingga tidak dapat diajukan dalam 'Semua Sesi' untuk hari ini. Jika ingin izin untuk malam ini, pilih 'Hanya Sesi Malam', atau mulai izin 'Semua Sesi' dari tanggal besok.",
+                        422
+                    );
+                }
+            }
+        }
+
+        // Periksa apakah penghuni sudah memiliki catatan presensi (hadir/terlambat/alpa) pada tanggal dan sesi yang diajukan
+        $presensiQuery = $this->fetchTable('Presensis')->find()
+            ->where([
+                'user_id' => $userId,
+                'status IN' => ['hadir', 'terlambat', 'alpa', 'alfa'],
+                'tanggal >=' => $data['tanggal_mulai'],
+                'tanggal <=' => $data['tanggal_selesai'],
+            ]);
+        if ($sesi !== 'semua') {
+            $presensiQuery->where(['sesi' => $sesi]);
+        }
+        $existingPresensi = $presensiQuery->orderBy(['tanggal' => 'ASC'])->first();
+        if ($existingPresensi !== null) {
+            $presensiDate = is_object($existingPresensi->tanggal) && method_exists($existingPresensi->tanggal, 'format')
+                ? $existingPresensi->tanggal->format('Y-m-d')
+                : (string)$existingPresensi->tanggal;
+            $sesiLabel = $existingPresensi->sesi === 'subuh' ? 'Sesi Subuh' : 'Sesi Malam';
+            $isAlfa = in_array(strtolower((string)$existingPresensi->status), ['alpa', 'alfa'], true);
+            if ($isAlfa) {
+                return $this->jsonError(
+                    "{$sesiLabel} pada tanggal {$presensiDate} sudah berakhir dan tercatat Alfa. Pengajuan izin hanya dapat dilakukan sebelum sesi presensi berakhir.",
+                    422
+                );
+            }
+            if ($sesi === 'semua') {
+                $saranSesi = $existingPresensi->sesi === 'subuh' ? 'Hanya Sesi Malam' : 'Hanya Sesi Subuh';
+                return $this->jsonError(
+                    "Anda sudah mengambil presensi {$sesiLabel} pada tanggal {$presensiDate}. Tidak dapat mengajukan izin 'Semua Sesi' pada hari yang sesinya sudah dihadiri (pilih '{$saranSesi}' jika ingin izin untuk sesi lainnya).",
+                    422
+                );
+            }
+
+            return $this->jsonError(
+                "Anda sudah mengambil presensi {$sesiLabel} pada tanggal {$presensiDate}. Tidak dapat mengajukan izin untuk sesi yang sudah dihadiri.",
+                422
+            );
         }
 
         // Periksa apakah sudah ada pengajuan izin aktif pada tanggal dan sesi yang bertabrakan
@@ -171,7 +243,7 @@ class IzinsController extends ApiController
         $list = $izinsTable->find()
             ->where(['Izins.status' => 'pending'])
             ->contain(['Users' => ['Kamars']])
-            ->order(['Izins.created_at' => 'ASC'])
+            ->orderBy(['Izins.created_at' => 'ASC'])
             ->all();
 
         return $this->jsonSuccess($list->toArray());
@@ -183,7 +255,10 @@ class IzinsController extends ApiController
      */
     public function verify(string $id): Response
     {
-        $this->request->allowMethod(['post']);
+        $this->request->allowMethod(['post', 'options']);
+        if ($this->request->is('options')) {
+            return $this->response->withStatus(200);
+        }
         $user = $this->requireAuthenticatedUser();
         if ($user instanceof Response) {
             return $user;
@@ -200,9 +275,169 @@ class IzinsController extends ApiController
         $izin->disetujui_oleh = $user->id;
 
         if ($izinsTable->save($izin)) {
+            if ($status === 'disetujui') {
+                $this->syncPermitAttendance($izin);
+            } else {
+                $this->removePermitAttendance($izin);
+            }
+
             return $this->jsonSuccess($izin->toArray(), "Izin berhasil di-$status.");
         }
 
         return $this->jsonError('Gagal memverifikasi izin.', 422);
+    }
+
+    /**
+     * Batalkan Pengajuan Izin (Penghuni)
+     * DELETE /api/izins/:id
+     */
+    public function cancel(string $id): Response
+    {
+        $this->request->allowMethod(['delete', 'post', 'options']);
+        if ($this->request->is('options')) {
+            return $this->response->withStatus(200);
+        }
+        $user = $this->requireAuthenticatedUser();
+        if ($user instanceof Response) {
+            return $user;
+        }
+
+        $izinsTable = $this->fetchTable('Izins');
+        $izin = $izinsTable->find()
+            ->where(['Izins.id' => $id, 'Izins.user_id' => $user->id])
+            ->first();
+
+        if ($izin === null) {
+            return $this->jsonError('Data pengajuan izin tidak ditemukan.', 404);
+        }
+
+        $today = (new \DateTimeImmutable('now', new \DateTimeZone('Asia/Jakarta')))->format('Y-m-d');
+        $endDateStr = is_object($izin->tanggal_selesai) && method_exists($izin->tanggal_selesai, 'format')
+            ? $izin->tanggal_selesai->format('Y-m-d')
+            : substr((string)$izin->tanggal_selesai, 0, 10);
+
+        if ($izin->status === 'ditolak') {
+            return $this->jsonError('Pengajuan izin yang sudah ditolak tidak dapat dibatalkan.', 422);
+        }
+        if ($izin->status === 'disetujui' && $endDateStr < $today) {
+            return $this->jsonError('Izin yang masa berlakunya sudah lewat tidak dapat dibatalkan.', 422);
+        }
+
+        $this->removePermitAttendance($izin);
+
+        if ($izinsTable->delete($izin)) {
+            return $this->jsonSuccess([], 'Pengajuan izin berhasil dibatalkan.');
+        }
+
+        return $this->jsonError('Gagal membatalkan pengajuan izin.', 500);
+    }
+
+    private function syncPermitAttendance(object $izin): void
+    {
+        $presensisTable = $this->fetchTable('Presensis');
+        $startStr = is_object($izin->tanggal_mulai) && method_exists($izin->tanggal_mulai, 'format')
+            ? $izin->tanggal_mulai->format('Y-m-d')
+            : substr((string)$izin->tanggal_mulai, 0, 10);
+        $endStr = is_object($izin->tanggal_selesai) && method_exists($izin->tanggal_selesai, 'format')
+            ? $izin->tanggal_selesai->format('Y-m-d')
+            : substr((string)$izin->tanggal_selesai, 0, 10);
+
+        $sessions = ($izin->sesi === 'subuh' || $izin->sesi === 'malam')
+            ? [$izin->sesi]
+            : ['subuh', 'malam'];
+
+        $current = new \DateTimeImmutable($startStr);
+        $end = new \DateTimeImmutable($endStr);
+
+        while ($current <= $end) {
+            $dateStr = $current->format('Y-m-d');
+            foreach ($sessions as $sesi) {
+                $existing = $presensisTable->find()
+                    ->where([
+                        'user_id' => $izin->user_id,
+                        'tanggal' => $dateStr,
+                        'sesi' => $sesi,
+                    ])
+                    ->first();
+                if ($existing === null) {
+                    $entity = $presensisTable->newEntity([
+                        'user_id' => $izin->user_id,
+                        'tanggal' => $dateStr,
+                        'waktu' => '00:00:00',
+                        'sesi' => $sesi,
+                        'status' => 'izin',
+                        'keterangan' => 'Izin disetujui: ' . ($izin->keterangan ?: $izin->jenis_izin),
+                    ]);
+                    $presensisTable->save($entity);
+                } elseif (in_array(strtolower((string)$existing->status), ['alpa', 'alfa'], true)) {
+                    $existing->status = 'izin';
+                    $existing->keterangan = 'Izin disetujui: ' . ($izin->keterangan ?: $izin->jenis_izin);
+                    $presensisTable->save($existing);
+                }
+            }
+            $current = $current->modify('+1 day');
+        }
+    }
+
+    /**
+     * @return array{jam_subuh_selesai: string, jam_malam_selesai: string, subuh_selesai_min: int, malam_selesai_min: int}
+     */
+    private function scheduleEndTimes(): array
+    {
+        $subuhEnd = '06:00';
+        $malamEnd = '20:30';
+        try {
+            $record = $this->fetchTable('PengaturanPresensi')->find()->orderBy(['id' => 'ASC'])->first();
+            if ($record !== null) {
+                $fmt = static function (mixed $val, string $fallback): string {
+                    if (is_object($val) && method_exists($val, 'format')) {
+                        return (string)$val->format('H:i');
+                    }
+                    if (preg_match('/\A([01]\d|2[0-3]):([0-5]\d)/', str_replace('.', ':', (string)$val), $m)) {
+                        return $m[1] . ':' . $m[2];
+                    }
+
+                    return $fallback;
+                };
+                $subuhEnd = $fmt($record->jam_subuh_selesai, $subuhEnd);
+                $malamEnd = $fmt($record->jam_malam_selesai, $malamEnd);
+            }
+        } catch (\Throwable) {
+        }
+
+        $toMin = static function (string $hhmm): int {
+            [$h, $m] = array_map('intval', explode(':', $hhmm));
+
+            return ($h * 60) + $m;
+        };
+
+        return [
+            'jam_subuh_selesai' => $subuhEnd,
+            'jam_malam_selesai' => $malamEnd,
+            'subuh_selesai_min' => $toMin($subuhEnd),
+            'malam_selesai_min' => $toMin($malamEnd),
+        ];
+    }
+
+    private function removePermitAttendance(object $izin): void
+    {
+        $presensisTable = $this->fetchTable('Presensis');
+        $startStr = is_object($izin->tanggal_mulai) && method_exists($izin->tanggal_mulai, 'format')
+            ? $izin->tanggal_mulai->format('Y-m-d')
+            : substr((string)$izin->tanggal_mulai, 0, 10);
+        $endStr = is_object($izin->tanggal_selesai) && method_exists($izin->tanggal_selesai, 'format')
+            ? $izin->tanggal_selesai->format('Y-m-d')
+            : substr((string)$izin->tanggal_selesai, 0, 10);
+
+        $conditions = [
+            'user_id' => $izin->user_id,
+            'status' => 'izin',
+            'tanggal >=' => $startStr,
+            'tanggal <=' => $endStr,
+        ];
+        if ($izin->sesi === 'subuh' || $izin->sesi === 'malam') {
+            $conditions['sesi'] = $izin->sesi;
+        }
+        $presensisTable->deleteAll($conditions);
     }
 }

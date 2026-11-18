@@ -4,7 +4,7 @@
  */
 
 const PRIMARY_API_URL = '/api';
-const FALLBACK_API_URL = 'http://localhost:8765/api';
+const FALLBACK_API_URL = 'http://127.0.0.1:8765/api';
 
 export async function apiRequest(endpoint, options = {}) {
   const token = localStorage.getItem('asrama_token');
@@ -92,7 +92,7 @@ export const api = {
             nim: '2111522001',
             email: 'fasil.rizky@unand.ac.id',
             role: 'fasil',
-            gedung: 'Asrama Putra Unand (Gedung A)',
+            gedung: 'RPX',
             token: 'offline_token_fasil'
           }
         };
@@ -108,7 +108,7 @@ export const api = {
             role: 'penghuni',
             kamar_id: 1,
             nomor_kamar: 'A-101',
-            gedung: 'Asrama Putra Unand (Gedung A)',
+            gedung: 'RPX',
             token: 'offline_token_penghuni'
           }
         };
@@ -153,6 +153,7 @@ export const api = {
   getMyIzins: () => apiRequest('/izins/my-permits'),
   getPendingIzins: () => apiRequest('/izins/pending'),
   verifyIzin: (id, status, catatan) => apiRequest(`/izins/${id}/verify`, { method: 'POST', body: JSON.stringify({ status, catatan }) }),
+  cancelIzin: (id) => apiRequest(`/izins/${id}`, { method: 'DELETE' }),
 
   // Users (Admin)
   getUsers: (role) => apiRequest(`/users${role ? `?role=${role}` : ''}`),

@@ -11,15 +11,14 @@ const kategoriStatus = (status) => {
   const nilai = String(status || '').toLowerCase();
   if (nilai === 'izin') return 'izin';
   if (nilai === 'alpa' || nilai === 'alfa' || nilai === 'alpha') return 'alpa';
-  if (nilai === 'terlambat') return 'terlambat';
-  if (nilai === 'hadir') return 'hadir';
+  if (nilai === 'hadir' || nilai === 'terlambat') return 'hadir';
   return 'lainnya';
 };
 
 const variantStatus = (status) => {
   const kategori = kategoriStatus(status);
   if (kategori === 'hadir') return 'success';
-  if (kategori === 'izin' || kategori === 'terlambat') return 'warning';
+  if (kategori === 'izin') return 'warning';
   if (kategori === 'alpa') return 'error';
   return 'neutral';
 };
@@ -46,6 +45,7 @@ export default function RiwayatPresensi() {
   const [photoError, setPhotoError] = useState('');
   const [riwayat, setRiwayat] = useState([]);
   const [filterMode, setFilterMode] = useState('all');
+  const [filterSesi, setFilterSesi] = useState('all');
   const [filterMonth, setFilterMonth] = useState('');
   const [tanggalMulai, setTanggalMulai] = useState('');
   const [tanggalSelesai, setTanggalSelesai] = useState('');
@@ -53,7 +53,7 @@ export default function RiwayatPresensi() {
   const [error, setError] = useState('');
 
   useEffect(() => () => {
-    if (selectedPhoto) URL.revokeObjectURL(selectedPhoto);
+    if (selectedPhoto && selectedPhoto.startsWith('blob:')) URL.revokeObjectURL(selectedPhoto);
   }, [selectedPhoto]);
 
   useEffect(() => {
@@ -81,32 +81,41 @@ export default function RiwayatPresensi() {
 
   const riwayatTersaring = useMemo(() => riwayat.filter((record) => {
     const tanggal = String(record.tanggal || '').slice(0, 10);
+    const sesi = String(record.sesi || '').toLowerCase();
+    if (filterSesi !== 'all' && sesi !== filterSesi) return false;
     if (filterMode === 'month' && filterMonth && !tanggal.startsWith(filterMonth)) return false;
     if (filterMode === 'range' && tanggalMulai && tanggal < tanggalMulai) return false;
     if (filterMode === 'range' && tanggalSelesai && tanggal > tanggalSelesai) return false;
     return true;
-  }), [riwayat, filterMode, filterMonth, tanggalMulai, tanggalSelesai]);
+  }), [riwayat, filterSesi, filterMode, filterMonth, tanggalMulai, tanggalSelesai]);
 
   const statistik = useMemo(() => riwayatTersaring.reduce((total, record) => {
     const kategori = kategoriStatus(record.status);
     if (kategori in total) total[kategori] += 1;
     return total;
-  }, { hadir: 0, izin: 0, alpa: 0, terlambat: 0 }), [riwayatTersaring]);
+  }, { hadir: 0, izin: 0, alpa: 0 }), [riwayatTersaring]);
 
   const rentangTidakValid = filterMode === 'range' && tanggalMulai && tanggalSelesai && tanggalMulai > tanggalSelesai;
 
   const resetFilter = () => {
     setFilterMode('all');
+    setFilterSesi('all');
     setFilterMonth('');
     setTanggalMulai('');
     setTanggalSelesai('');
   };
 
-  const openPhoto = async (id) => {
+  const openPhoto = async (row) => {
     setPhotoError('');
-    setPhotoLoadingId(id);
+    const rawPath = String(row.foto_wajah || '');
+    // Jika data contoh lama memiliki path langsung di webroot (uploads/...)
+    if (rawPath.includes('/')) {
+      setSelectedPhoto(rawPath.startsWith('/') ? rawPath : `/${rawPath}`);
+      return;
+    }
+    setPhotoLoadingId(row.id);
     try {
-      setSelectedPhoto(await api.getPresensiPhoto(id));
+      setSelectedPhoto(await api.getPresensiPhoto(row.id));
     } catch (requestError) {
       setPhotoError(requestError.message || 'Foto presensi gagal dimuat.');
     } finally {
@@ -137,7 +146,7 @@ export default function RiwayatPresensi() {
           </div>
         </div>
 
-        <div className="status-izin-summary" style={{ marginBottom: '16px' }}>
+        <div className="status-izin-summary" style={{ marginBottom: '16px', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
           <div className="status-summary-item">
             <span className="text-small">Hadir</span>
             <strong className="status-summary-approved">{statistik.hadir}</strong>
@@ -147,16 +156,21 @@ export default function RiwayatPresensi() {
             <strong style={{ color: 'var(--color-warning)' }}>{statistik.izin}</strong>
           </div>
           <div className="status-summary-item">
-            <span className="text-small">Terlambat</span>
-            <strong style={{ color: 'var(--color-warning)' }}>{statistik.terlambat}</strong>
-          </div>
-          <div className="status-summary-item">
             <span className="text-small">Alfa</span>
             <strong style={{ color: 'var(--color-error)' }}>{statistik.alpa}</strong>
           </div>
         </div>
 
         <div className="resident-history-filter-bar">
+          <label className="resident-filter-mode">
+            <span>Sesi Absensi</span>
+            <select value={filterSesi} onChange={(e) => setFilterSesi(e.target.value)}>
+              <option value="all">Semua sesi (Subuh &amp; Malam)</option>
+              <option value="subuh">Sesi Subuh</option>
+              <option value="malam">Sesi Malam</option>
+            </select>
+          </label>
+
           <label className="resident-filter-mode">
             <span>Periode</span>
             <select value={filterMode} onChange={(e) => setFilterMode(e.target.value)}>
@@ -192,7 +206,7 @@ export default function RiwayatPresensi() {
             </>
           )}
 
-          {filterMode !== 'all' && (
+          {(filterMode !== 'all' || filterSesi !== 'all') && (
             <Button size="md" variant="secondary" onClick={resetFilter} style={{ height: '42px', textTransform: 'none', letterSpacing: 0 }}>
               Reset Filter
             </Button>
@@ -266,7 +280,7 @@ export default function RiwayatPresensi() {
                           className="admin-secondary-button"
                           style={{ minHeight: '34px', padding: '5px 12px', fontSize: '12px' }}
                           disabled={photoLoadingId === row.id}
-                          onClick={() => openPhoto(row.id)}
+                          onClick={() => openPhoto(row)}
                         >
                           {photoLoadingId === row.id ? 'Memuat...' : 'Lihat Foto'}
                         </button>
@@ -314,7 +328,7 @@ export default function RiwayatPresensi() {
                   className="admin-secondary-button"
                   style={{ width: '100%' }}
                   disabled={photoLoadingId === row.id}
-                  onClick={() => openPhoto(row.id)}
+                  onClick={() => openPhoto(row)}
                 >
                   {photoLoadingId === row.id ? 'Memuat...' : 'Lihat Foto Bukti'}
                 </button>

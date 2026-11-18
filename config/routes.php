@@ -147,6 +147,9 @@ return function (RouteBuilder $routes): void {
         $builder->connect('/izins/my-permits', ['controller' => 'Izins', 'action' => 'myPermits']);
         $builder->connect('/izins/pending', ['controller' => 'Izins', 'action' => 'pending']);
         $builder->connect('/izins/{id}/verify', ['controller' => 'Izins', 'action' => 'verify'])->setPass(['id']);
+        $builder->connect('/izins/{id}', ['controller' => 'Izins', 'action' => 'cancel'])
+            ->setPass(['id'])
+            ->setMethods(['DELETE', 'POST']);
         $builder->connect('/izins', ['controller' => 'Izins', 'action' => 'add']);
 
         // Users (Admin)

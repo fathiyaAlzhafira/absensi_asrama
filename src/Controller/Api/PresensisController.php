@@ -21,9 +21,97 @@ class PresensisController extends ApiController
         }
         $presensisTable = $this->fetchTable('Presensis');
 
+        // Sinkronkan izin yang sudah disetujui ke tabel presensis agar langsung tercatat di riwayat
+        $approvedIzins = $this->fetchTable('Izins')->find()
+            ->where([
+                'user_id' => $user->id,
+                'status' => 'disetujui',
+            ])
+            ->all();
+        foreach ($approvedIzins as $izin) {
+            $startStr = is_object($izin->tanggal_mulai) && method_exists($izin->tanggal_mulai, 'format')
+                ? $izin->tanggal_mulai->format('Y-m-d')
+                : substr((string)$izin->tanggal_mulai, 0, 10);
+            $endStr = is_object($izin->tanggal_selesai) && method_exists($izin->tanggal_selesai, 'format')
+                ? $izin->tanggal_selesai->format('Y-m-d')
+                : substr((string)$izin->tanggal_selesai, 0, 10);
+            $sessions = ($izin->sesi === 'subuh' || $izin->sesi === 'malam')
+                ? [$izin->sesi]
+                : ['subuh', 'malam'];
+
+            $current = new \DateTimeImmutable($startStr);
+            $end = new \DateTimeImmutable($endStr);
+            while ($current <= $end) {
+                $dateStr = $current->format('Y-m-d');
+                foreach ($sessions as $sesi) {
+                    if (!$presensisTable->exists([
+                        'user_id' => $user->id,
+                        'tanggal' => $dateStr,
+                        'sesi' => $sesi,
+                    ])) {
+                        $entity = $presensisTable->newEntity([
+                            'user_id' => $user->id,
+                            'tanggal' => $dateStr,
+                            'waktu' => '00:00:00',
+                            'sesi' => $sesi,
+                            'status' => 'izin',
+                            'keterangan' => 'Izin disetujui: ' . ($izin->keterangan ?: $izin->jenis_izin),
+                        ]);
+                        $presensisTable->save($entity);
+                    }
+                }
+                $current = $current->modify('+1 day');
+            }
+        }
+
+        // Catat otomatis status alpa untuk sesi hari ini yang sudah melewati batas waktu selesai tanpa presensi/izin aktif
+        $now = new \DateTimeImmutable('now', new \DateTimeZone('Asia/Jakarta'));
+        $todayStr = $now->format('Y-m-d');
+        $currentMinutes = ((int)$now->format('G') * 60) + (int)$now->format('i');
+        $bounds = $this->scheduleBounds();
+
+        $closedSessionsToday = [];
+        if ($currentMinutes >= $bounds['subuh_selesai']) {
+            $closedSessionsToday[] = 'subuh';
+        }
+        if ($currentMinutes >= $bounds['malam_selesai']) {
+            $closedSessionsToday[] = 'malam';
+        }
+
+        foreach ($closedSessionsToday as $closedSesi) {
+            if ($presensisTable->exists([
+                'user_id' => $user->id,
+                'tanggal' => $todayStr,
+                'sesi' => $closedSesi,
+            ])) {
+                continue;
+            }
+            $hasActivePermit = $this->fetchTable('Izins')->exists([
+                'user_id' => $user->id,
+                'status IN' => ['pending', 'disetujui'],
+                'tanggal_mulai <=' => $todayStr,
+                'tanggal_selesai >=' => $todayStr,
+                'OR' => [
+                    ['sesi IN' => ['semua', $closedSesi]],
+                    ['sesi IS' => null],
+                ],
+            ]);
+            if (!$hasActivePermit) {
+                $alpaEntity = $presensisTable->newEntity([
+                    'user_id' => $user->id,
+                    'tanggal' => $todayStr,
+                    'waktu' => '00:00:00',
+                    'sesi' => $closedSesi,
+                    'status' => 'alpa',
+                    'keterangan' => 'Melewati batas waktu presensi',
+                ]);
+                $presensisTable->save($alpaEntity);
+            }
+        }
+
         $list = $presensisTable->find()
             ->where(['Presensis.user_id' => $user->id])
-            ->order(['Presensis.tanggal' => 'DESC', 'Presensis.waktu' => 'DESC'])
+            ->orderBy(['Presensis.tanggal' => 'DESC', 'Presensis.waktu' => 'DESC'])
             ->all();
 
         return $this->jsonSuccess($list->toArray());
@@ -50,32 +138,42 @@ class PresensisController extends ApiController
             ->where(['user_id' => $user->id, 'tanggal' => $today, 'sesi' => 'malam'])
             ->first();
 
-        // Periksa apakah ada izin yang disetujui untuk sesi hari ini
+        // Periksa apakah ada izin aktif (pending / disetujui) untuk sesi hari ini
         $izinsTable = $this->fetchTable('Izins');
-        $approvedIzins = $izinsTable->find()
+        $activeIzins = $izinsTable->find()
             ->where([
                 'user_id' => $user->id,
-                'status' => 'disetujui',
+                'status IN' => ['pending', 'disetujui'],
                 'tanggal_mulai <=' => $today,
                 'tanggal_selesai >=' => $today
             ])
             ->all();
 
-        $subuhIzin = false;
-        $malamIzin = false;
-        foreach ($approvedIzins as $iz) {
+        $subuhIzinStatus = null;
+        $malamIzinStatus = null;
+        foreach ($activeIzins as $iz) {
             if ($iz->sesi === 'semua' || empty($iz->sesi)) {
-                $subuhIzin = true;
-                $malamIzin = true;
+                $subuhIzinStatus = $iz->status;
+                $malamIzinStatus = $iz->status;
             } elseif ($iz->sesi === 'subuh') {
-                $subuhIzin = true;
+                $subuhIzinStatus = $iz->status;
             } elseif ($iz->sesi === 'malam') {
-                $malamIzin = true;
+                $malamIzinStatus = $iz->status;
             }
         }
 
-        $subuhData = $subuh ? ['status' => $subuh->status, 'waktu' => $subuh->waktu->format('H:i')] : ($subuhIzin ? ['status' => 'izin', 'waktu' => 'Izin Disetujui'] : null);
-        $malamData = $malam ? ['status' => $malam->status, 'waktu' => $malam->waktu->format('H:i')] : ($malamIzin ? ['status' => 'izin', 'waktu' => 'Izin Disetujui'] : null);
+        $subuhData = $subuh
+            ? ['status' => $subuh->status, 'waktu' => $subuh->waktu->format('H:i')]
+            : ($subuhIzinStatus ? [
+                'status' => $subuhIzinStatus === 'pending' ? 'izin_pending' : 'izin',
+                'waktu' => $subuhIzinStatus === 'pending' ? 'Menunggu Verifikasi' : 'Izin Disetujui',
+            ] : null);
+        $malamData = $malam
+            ? ['status' => $malam->status, 'waktu' => $malam->waktu->format('H:i')]
+            : ($malamIzinStatus ? [
+                'status' => $malamIzinStatus === 'pending' ? 'izin_pending' : 'izin',
+                'waktu' => $malamIzinStatus === 'pending' ? 'Menunggu Verifikasi' : 'Izin Disetujui',
+            ] : null);
 
         return $this->jsonSuccess([
             'today' => $today,
@@ -138,6 +236,26 @@ class PresensisController extends ApiController
             return $this->jsonError('Presensi ' . $sesi . ' hari ini sudah tercatat.', 409);
         }
 
+        $todayStr = $now->format('Y-m-d');
+        $existingIzin = $this->fetchTable('Izins')->find()
+            ->where([
+                'user_id' => $user->id,
+                'status IN' => ['pending', 'disetujui'],
+                'tanggal_mulai <=' => $todayStr,
+                'tanggal_selesai >=' => $todayStr,
+                'OR' => [
+                    ['sesi IN' => ['semua', $sesi]],
+                    ['sesi IS' => null],
+                ],
+            ])
+            ->first();
+        if ($existingIzin !== null) {
+            return $this->jsonError(
+                'Anda sudah memiliki pengajuan izin aktif untuk sesi ' . $sesi . ' hari ini.',
+                409
+            );
+        }
+
         if (
             !isset($data['lat'], $data['long']) ||
             !is_numeric($data['lat']) ||
@@ -155,7 +273,7 @@ class PresensisController extends ApiController
         } catch (InvalidArgumentException $exception) {
             return $this->jsonError('Batas geofence gedung tidak valid.', 422);
         }
-        if (!GeoJsonFence::contains($geometry, (float)$data['lat'], (float)$data['long'])) {
+        if (!GeoJsonFence::contains($geometry, (float)$data['lat'], (float)$data['long'], 35.0)) {
             return $this->jsonError('Lokasi berada di luar area gedung.', 422);
         }
 
@@ -272,8 +390,8 @@ class PresensisController extends ApiController
                 return $defaults;
             }
             $fmt = static function (mixed $val, string $fallback): string {
-                if ($val instanceof \DateTimeInterface) {
-                    return $val->format('H:i');
+                if (is_object($val) && method_exists($val, 'format')) {
+                    return (string)$val->format('H:i');
                 }
                 if (preg_match('/\A([01]\d|2[0-3]):([0-5]\d)/', str_replace('.', ':', (string)$val), $m)) {
                     return $m[1] . ':' . $m[2];

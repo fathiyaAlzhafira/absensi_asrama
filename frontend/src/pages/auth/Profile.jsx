@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import Card from '../../components/common/Card';
@@ -19,13 +19,14 @@ import {
   Sun,
   User
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
 import { api } from '../../services/api';
+import { getStoredPresensiSchedule, savePresensiSchedule } from '../../utils/presensiSchedule';
 
 export default function Profile() {
   const { user, role, setUser } = useAuth();
   const { theme, setTheme } = useTheme();
   const location = useLocation();
+  const [schedule, setSchedule] = useState(() => getStoredPresensiSchedule());
   const [noHp, setNoHp] = useState(user?.no_hp || '');
   const [asal, setAsal] = useState(user?.asal || '');
   const [profileMessage, setProfileMessage] = useState({ type: '', text: '' });
@@ -36,7 +37,30 @@ export default function Profile() {
   const [passwordMessage, setPasswordMessage] = useState({ type: '', text: '' });
   const [savingPassword, setSavingPassword] = useState(false);
 
-  React.useEffect(() => {
+  // Ambil data profil terbaru dari backend setiap kali halaman Profil dibuka
+  useEffect(() => {
+    let active = true;
+    api.getProfile()
+      .then((res) => {
+        if (!active || res?.status !== 'success' || !res.data) return;
+        setUser((prev) => (prev ? { ...prev, ...res.data } : res.data));
+        setNoHp(res.data.no_hp || '');
+        setAsal(res.data.asal || '');
+      })
+      .catch(() => {});
+
+    api.getPengaturanPresensi()
+      .then((res) => {
+        if (active && res?.data) setSchedule(savePresensiSchedule(res.data));
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [setUser]);
+
+  useEffect(() => {
     const sectionId = location.hash.slice(1);
     if (!sectionId) return undefined;
     const timerId = window.setTimeout(() => {
@@ -56,7 +80,7 @@ export default function Profile() {
     try {
       const response = await api.updateProfile({ no_hp: noHp, asal });
       if (response.status !== 'success') throw new Error(response.message || 'Profil gagal diperbarui.');
-      setUser({ ...user, ...response.data, no_hp: noHp, asal });
+      setUser((prev) => ({ ...prev, ...response.data, no_hp: noHp, asal }));
       setProfileMessage({ type: 'success', text: 'Informasi kontak berhasil diperbarui.' });
     } catch (error) {
       setProfileMessage({ type: 'error', text: error.message || 'Profil gagal diperbarui.' });
@@ -70,11 +94,11 @@ export default function Profile() {
     setPasswordMessage({ type: '', text: '' });
 
     if (passwordBaru.length < 8) {
-      setPasswordMessage({ type: 'error', text: 'Password baru minimal 8 karakter.' });
+      setPasswordMessage({ type: 'error', text: 'Kata sandi baru minimal 8 karakter.' });
       return;
     }
     if (passwordBaru !== konfirmasiPassword) {
-      setPasswordMessage({ type: 'error', text: 'Konfirmasi password belum sama.' });
+      setPasswordMessage({ type: 'error', text: 'Konfirmasi kata sandi baru belum sama.' });
       return;
     }
 
@@ -84,13 +108,13 @@ export default function Profile() {
         password_lama: passwordLama,
         password_baru: passwordBaru
       });
-      if (response.status !== 'success') throw new Error(response.message || 'Password gagal diubah.');
+      if (response.status !== 'success') throw new Error(response.message || 'Kata sandi gagal diubah.');
       setPasswordLama('');
       setPasswordBaru('');
       setKonfirmasiPassword('');
-      setPasswordMessage({ type: 'success', text: 'Password berhasil diubah.' });
+      setPasswordMessage({ type: 'success', text: response.message || 'Kata sandi berhasil diperbarui.' });
     } catch (error) {
-      setPasswordMessage({ type: 'error', text: error.message || 'Password gagal diubah.' });
+      setPasswordMessage({ type: 'error', text: error.message || 'Kata sandi gagal diubah.' });
     } finally {
       setSavingPassword(false);
     }
@@ -105,9 +129,8 @@ export default function Profile() {
               <ChevronLeft size={22} />
             </Link>
           )}
-          <h1 className={role === 'penghuni' ? 'resident-subpage-title' : 'text-page-title'}>Profil & Pengaturan</h1>
+          <h1 className={role === 'penghuni' ? 'resident-subpage-title' : 'text-page-title'}>Profil &amp; Pengaturan</h1>
         </div>
-        <p className="text-body">Kelola akun, tampilan, keamanan, dan panduan penggunaan.</p>
       </div>
 
       <section id="lihat-profil" className="profile-identity-section">
@@ -123,7 +146,9 @@ export default function Profile() {
           <div className="profile-identity-details">
             {user?.nim && <span>NIM {user.nim}</span>}
             <span><Building size={15} />{user?.gedung || 'Asrama Unand'}</span>
-            <span><DoorOpen size={15} />Kamar {user?.nomor_kamar || user?.kamar || '-'}</span>
+            {role === 'penghuni' && (
+              <span><DoorOpen size={15} />Kamar {user?.nomor_kamar || user?.kamar || '-'}</span>
+            )}
           </div>
         </Card>
       </section>
@@ -197,10 +222,10 @@ export default function Profile() {
             )}
             <form className="profile-form" onSubmit={handleChangePassword}>
               <Input label="Kata sandi saat ini" type="password" autoComplete="current-password" required value={passwordLama} onChange={(e) => setPasswordLama(e.target.value)} icon={LockKeyhole} />
-              <Input label="Kata sandi baru" type="password" autoComplete="new-password" required value={passwordBaru} onChange={(e) => setPasswordBaru(e.target.value)} icon={LockKeyhole} />
+              <Input label="Kata sandi baru (minimal 8 karakter)" type="password" autoComplete="new-password" required value={passwordBaru} onChange={(e) => setPasswordBaru(e.target.value)} icon={LockKeyhole} />
               <Input label="Konfirmasi kata sandi baru" type="password" autoComplete="new-password" required value={konfirmasiPassword} onChange={(e) => setKonfirmasiPassword(e.target.value)} icon={LockKeyhole} />
-              <Button type="submit" variant="secondary" icon={LockKeyhole} disabled={savingPassword}>
-                {savingPassword ? 'Memperbarui...' : 'Ubah kata sandi'}
+              <Button type="submit" variant="primary" icon={LockKeyhole} disabled={savingPassword}>
+                {savingPassword ? 'Memperbarui...' : 'Simpan kata sandi baru'}
               </Button>
             </form>
           </div>
@@ -210,7 +235,7 @@ export default function Profile() {
           <summary>
             <span className="profile-accordion-title">
               <span className="profile-section-icon"><HelpCircle size={19} /></span>
-              <span><strong>Bantuan & aturan penggunaan</strong><small>Panduan aplikasi presensi asrama</small></span>
+              <span><strong>Bantuan &amp; aturan penggunaan</strong><small>Panduan aplikasi presensi asrama</small></span>
             </span>
             <ChevronDown size={18} />
           </summary>
@@ -219,24 +244,24 @@ export default function Profile() {
               <details>
                 <summary><span>Presensi kehadiran</span><ChevronDown size={17} /></summary>
                 <ul>
-                  <li>Presensi Subuh dibuka pukul 04.00–06.00 WIB.</li>
-                  <li>Presensi Malam dibuka pukul 18.00–20.30 WIB.</li>
-                  <li>Presensi hanya dapat dilakukan saat sesi terbuka, satu kali untuk setiap sesi per hari. Izinkan kamera dan lokasi perangkat, lalu lakukan presensi di area asrama (maksimal radius 100 meter).</li>
+                  <li>Presensi Subuh dibuka pukul {schedule.jam_subuh_mulai}–{schedule.jam_subuh_selesai} WIB.</li>
+                  <li>Presensi Malam dibuka pukul {schedule.jam_malam_mulai}–{schedule.jam_malam_selesai} WIB.</li>
+                  <li>Presensi hanya dapat dilakukan saat sesi terbuka, satu kali untuk setiap sesi per hari. Izinkan kamera dan lokasi perangkat, lalu lakukan presensi di dalam area poligon gedung asrama Anda.</li>
                 </ul>
               </details>
               <details>
                 <summary><span>Pengajuan dan status izin</span><ChevronDown size={17} /></summary>
                 <ul>
-                  <li>Pilih kategori dan tanggal izin, lalu isi alasan dengan jelas.</li>
+                  <li>Pilih kategori, sesi izin (Subuh, Malam, atau Semua Sesi), serta tanggal izin, lalu isi alasan dengan jelas.</li>
                   <li>Lampirkan bukti JPG, PNG, atau PDF dengan ukuran maksimal 5 MB.</li>
-                  <li>Pantau persetujuan dan catatan fasilitator pada halaman Status Izin.</li>
+                  <li>Pantau persetujuan dan catatan fasilitator pada bagian Riwayat Izin di bawah form pengajuan.</li>
                 </ul>
               </details>
               <details>
                 <summary><span>Riwayat dan filter</span><ChevronDown size={17} /></summary>
                 <ul>
-                  <li>Riwayat menampilkan status hadir, terlambat, izin, dan alfa.</li>
-                  <li>Gunakan filter bulan atau rentang tanggal untuk melihat periode tertentu.</li>
+                  <li>Riwayat menampilkan status hadir, izin, dan alfa.</li>
+                  <li>Gunakan filter sesi (Subuh / Malam) serta filter bulan atau rentang tanggal untuk melihat periode tertentu.</li>
                 </ul>
               </details>
               <details>
@@ -249,7 +274,6 @@ export default function Profile() {
             </div>
           </div>
         </details>
-
       </Card>
     </div>
   );

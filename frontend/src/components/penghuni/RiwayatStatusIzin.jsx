@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import Card from '../common/Card';
 import Badge from '../common/Badge';
 import Button from '../common/Button';
-import { Clock, ExternalLink, FileText, X, Download, AlertCircle } from 'lucide-react';
+import { Clock, ExternalLink, FileText, X, Download, AlertCircle, Trash2 } from 'lucide-react';
 import { api } from '../../services/api';
+import { getWibDateKey } from '../../utils/presensiSchedule';
 
 const formatTanggal = (tanggal) => {
   if (!tanggal) return '-';
@@ -49,12 +50,29 @@ const isImageFile = (filePath) => {
 
 const isPdfFile = (filePath) => Boolean(filePath && filePath.toLowerCase().endsWith('.pdf'));
 
-export default function RiwayatStatusIzin({ refreshKey = 0 }) {
+export default function RiwayatStatusIzin({ refreshKey = 0, onPermitChanged }) {
   const [daftarIzin, setDaftarIzin] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [retryKey, setRetryKey] = useState(0);
   const [previewFile, setPreviewFile] = useState(null);
+  const [cancellingId, setCancellingId] = useState(null);
+  const todayStr = getWibDateKey(new Date());
+
+  const handleCancelPermit = async (item) => {
+    if (!window.confirm('Apakah Anda yakin ingin membatalkan pengajuan izin ini?')) return;
+    setCancellingId(item.id);
+    setError('');
+    try {
+      await api.cancelIzin(item.id);
+      setDaftarIzin((prev) => prev.filter((izin) => izin.id !== item.id));
+      onPermitChanged?.();
+    } catch (cancelErr) {
+      setError(cancelErr.message || 'Gagal membatalkan pengajuan izin.');
+    } finally {
+      setCancellingId(null);
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -179,8 +197,36 @@ export default function RiwayatStatusIzin({ refreshKey = 0 }) {
                     <strong>{item.bukti_file.split(/[\\/]/).pop()}</strong>
                   </span>
                 </div>
-                <Button size="sm" variant="ghost" icon={ExternalLink} onClick={() => setPreviewFile(item.bukti_file)}>
-                  Buka berkas
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <Button size="sm" variant="ghost" icon={ExternalLink} onClick={() => setPreviewFile(item.bukti_file)}>
+                    Buka berkas
+                  </Button>
+                  {(item.status === 'pending' || (item.status === 'disetujui' && String(item.tanggal_selesai || '').slice(0, 10) >= todayStr)) && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      icon={Trash2}
+                      disabled={cancellingId === item.id}
+                      style={{ color: 'var(--color-error)' }}
+                      onClick={() => handleCancelPermit(item)}
+                    >
+                      {cancellingId === item.id ? 'Membatalkan...' : 'Batalkan Izin'}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+            {!item.bukti_file && (item.status === 'pending' || (item.status === 'disetujui' && String(item.tanggal_selesai || '').slice(0, 10) >= todayStr)) && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  icon={Trash2}
+                  disabled={cancellingId === item.id}
+                  style={{ color: 'var(--color-error)' }}
+                  onClick={() => handleCancelPermit(item)}
+                >
+                  {cancellingId === item.id ? 'Membatalkan...' : 'Batalkan Izin'}
                 </Button>
               </div>
             )}

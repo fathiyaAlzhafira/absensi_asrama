@@ -28,7 +28,7 @@ export default function KelolaUser() {
     password: ''
   });
 
-  // Ambil data users dari backend (Kecualikan admin karena admin sistem bersifat tunggal)
+  // Ambil data users dan daftar kamar terbaru dari backend
   const loadUsers = () => {
     setLoading(true);
     api.getUsers().then((res) => {
@@ -37,13 +37,14 @@ export default function KelolaUser() {
       }
     }).catch(() => {})
       .finally(() => setLoading(false));
+
+    api.getKamars().then((res) => {
+      if (Array.isArray(res?.data)) setKamars(res.data);
+    }).catch(() => {});
   };
 
   useEffect(() => {
     loadUsers();
-    api.getKamars().then((res) => {
-      if (Array.isArray(res?.data)) setKamars(res.data);
-    }).catch(() => {});
   }, []);
 
   const handleOpenAddModal = () => {
@@ -190,23 +191,24 @@ export default function KelolaUser() {
               <tr style={{ backgroundColor: 'var(--color-surface-l2)', color: 'var(--color-neutral)', borderBottom: '1px solid var(--color-border)' }}>
                 <th style={{ padding: '16px' }}>Nama Lengkap</th>
                 <th style={{ padding: '16px' }}>Role</th>
+                <th style={{ padding: '16px' }}>Gedung &amp; Kamar</th>
                 <th style={{ padding: '16px' }}>NIM / No Identitas</th>
                 <th style={{ padding: '16px' }}>Jenis Kelamin</th>
                 <th style={{ padding: '16px' }}>Asal Daerah</th>
-                <th style={{ padding: '16px' }}>Kontak & Email</th>
+                <th style={{ padding: '16px' }}>Kontak &amp; Email</th>
                 <th style={{ padding: '16px', textAlign: 'center' }}>Aksi</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} style={{ padding: '32px', textAlign: 'center', color: 'var(--color-neutral)' }}>
+                  <td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: 'var(--color-neutral)' }}>
                     Memuat data pengguna dari database...
                   </td>
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ padding: '32px', textAlign: 'center', color: 'var(--color-neutral)' }}>
+                  <td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: 'var(--color-neutral)' }}>
                     Tidak ada data pengguna yang sesuai dengan kriteria pencarian.
                   </td>
                 </tr>
@@ -220,6 +222,11 @@ export default function KelolaUser() {
                       <Badge variant={u.role === 'fasil' ? 'warning' : 'success'} size="sm">
                         {u.role}
                       </Badge>
+                    </td>
+                    <td style={{ padding: '16px', color: 'var(--color-text-primary)' }}>
+                      {u.role === 'penghuni'
+                        ? (u.gedung && u.kamar ? `${u.gedung} · Kamar ${u.kamar}` : 'Belum ditempatkan')
+                        : '-'}
                     </td>
                     <td style={{ padding: '16px', color: 'var(--color-neutral)' }}>{u.nim || '-'}</td>
                     <td style={{ padding: '16px', color: 'var(--color-neutral)' }}>

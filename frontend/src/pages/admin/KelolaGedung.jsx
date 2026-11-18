@@ -1,6 +1,8 @@
-import React, { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import Card from '../../components/common/Card';
 import Badge from '../../components/common/Badge';
+import Button from '../../components/common/Button';
+import { Edit2, Trash2, Power, Plus } from 'lucide-react';
 import { api } from '../../services/api';
 
 const BuildingPolygonEditor = lazy(() => import('../../components/admin/BuildingPolygonEditor'));
@@ -28,6 +30,8 @@ export default function KelolaGedung() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [editing, setEditing] = useState(null);
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -48,7 +52,6 @@ export default function KelolaGedung() {
         setFasilitators(getData(fasilResult.value, 'fasil'));
       } else {
         setFasilitators([]);
-        setError(fasilResult.reason?.message || 'Daftar fasil tidak dapat dimuat.');
       }
     } catch (loadError) {
       setError(loadError.message || 'Data gedung gagal dimuat.');
@@ -60,6 +63,20 @@ export default function KelolaGedung() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const visibleBuildings = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return gedungs.filter((building) => {
+      const active = Boolean(building.is_active);
+      if (statusFilter === 'active' && !active) return false;
+      if (statusFilter === 'inactive' && active) return false;
+      if (!query) return true;
+      const supervisor = building.fasil?.nama || building.user?.nama || building.nama_fasil || '';
+      return `${building.nama || ''} ${supervisor} ${building.keterangan || ''}`
+        .toLowerCase()
+        .includes(query);
+    });
+  }, [gedungs, search, statusFilter]);
 
   const closeForm = () => {
     setFormOpen(false);
@@ -88,8 +105,12 @@ export default function KelolaGedung() {
 
   const submitForm = async (event) => {
     event.preventDefault();
-    if (!editing && geoJsonFeatures.length > 0) {
-      setError('Gunakan tombol simpan semua area GeoJSON agar tidak membuat gedung ganda.');
+    if (!form.nama.trim()) {
+      setError('Nama gedung wajib diisi.');
+      return;
+    }
+    if (!form.geofence_geojson) {
+      setError('Silakan gambar poligon di peta atau tempel JSON dari geojson.io terlebih dahulu.');
       return;
     }
     setSaving(true);
@@ -126,11 +147,15 @@ export default function KelolaGedung() {
     let created = 0;
 
     try {
-      for (const feature of geoJsonFeatures) {
-        const name = String(feature.properties?.nama || feature.properties?.name || '').trim();
+      for (let idx = 0; idx < geoJsonFeatures.length; idx += 1) {
+        const feature = geoJsonFeatures[idx];
+        const fallbackName = geoJsonFeatures.length === 1
+          ? form.nama.trim()
+          : (form.nama.trim() ? `${form.nama.trim()} ${idx + 1}` : `Gedung Baru ${idx + 1}`);
+        const name = String(feature.properties?.nama || feature.properties?.name || fallbackName).trim();
         const normalizedName = name.toLocaleLowerCase();
         if (!name) {
-          failures.push('Ada area tanpa nama; area dilewati.');
+          failures.push('Ada area tanpa nama; isi Nama Gedung terlebih dahulu.');
           continue;
         }
         if (processed.has(normalizedName)) continue;
@@ -145,6 +170,7 @@ export default function KelolaGedung() {
             const response = await api.createGedung({
               nama: name,
               geofence_geojson: feature.geometry,
+              jumlah_lantai: Number(form.jumlah_lantai || 1),
               is_active: true
             });
             created += 1;
@@ -200,69 +226,123 @@ export default function KelolaGedung() {
       <header className="admin-management-header">
         <div>
           <h1 className="text-page-title">Kelola Gedung Asrama</h1>
-          <p className="text-body">Atur nama gedung, penanggung jawab, dan batas presensi pada peta.</p>
+          <p className="text-body">Kelola gedung asrama, jumlah lantai, fasilitator penanggung jawab, dan area presensi.</p>
         </div>
-        <button type="button" className="admin-action-button" onClick={() => openForm()}>
-          Tambah gedung
-        </button>
+        <Button variant="primary" size="md" icon={Plus} onClick={() => openForm()}>
+          Tambah Gedung
+        </Button>
       </header>
 
       {notice && <p className="admin-management-notice" role="status">{notice}</p>}
       {error && !formOpen && <p className="admin-management-error" role="alert">{error}</p>}
+
+      <Card hoverable={false}>
+        <div className="admin-room-filters">
+          <label className="admin-form-field">
+            Cari gedung
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Nama gedung atau nama fasilitator..."
+            />
+          </label>
+          <label className="admin-form-field">
+            Filter status
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              <option value="all">Semua status ({gedungs.length})</option>
+              <option value="active">Aktif ({gedungs.filter((b) => b.is_active).length})</option>
+              <option value="inactive">Nonaktif ({gedungs.filter((b) => !b.is_active).length})</option>
+            </select>
+          </label>
+        </div>
+      </Card>
+
       {loading ? (
         <Card><p className="text-body">Memuat data gedung...</p></Card>
       ) : error && gedungs.length === 0 ? (
         <Card><p className="text-body">Data gedung gagal dimuat. Periksa koneksi dan sesi login, lalu coba lagi.</p></Card>
-      ) : gedungs.length === 0 ? (
-        <Card><p className="text-body">Belum ada gedung. Tambahkan gedung untuk mulai mengatur batas presensi.</p></Card>
+      ) : visibleBuildings.length === 0 ? (
+        <Card>
+          <p className="text-body">
+            {gedungs.length ? 'Tidak ada gedung yang sesuai dengan pencarian.' : 'Belum ada gedung. Tambahkan gedung untuk mulai mengatur batas presensi.'}
+          </p>
+        </Card>
       ) : (
-        <div className="admin-building-grid">
-          {gedungs.map((building) => {
-            const active = Boolean(building.is_active);
-            const roomCount = Number(building.jumlah_kamar ?? building.kamars_count ?? building.kamars?.length ?? 0);
-            const floorCount = Number(building.jumlah_lantai ?? building.lantais?.length ?? 0);
-            const polygonPoints = building.geofence_geojson?.coordinates?.[0]?.length
-              ? Math.max(0, building.geofence_geojson.coordinates[0].length - 1)
-              : 0;
-            return (
-              <Card key={building.id} hoverable={false}>
-                <div className="admin-building-card-heading">
-                  <div>
-                    <h2 className="text-card-title">{building.nama}</h2>
-                    <Badge variant={active ? 'success' : 'neutral'} size="sm">
-                      {active ? 'Aktif' : 'Nonaktif'}
-                    </Badge>
-                  </div>
-                  <span className="admin-building-room-count">
-                    {floorCount} lantai · {roomCount} kamar
-                  </span>
-                </div>
-                <p className="admin-building-description">
-                  Penanggung jawab: {building.fasil?.nama || building.user?.nama || building.nama_fasil || 'Belum ditentukan'}
-                </p>
-                <p className="admin-building-description">
-                  {building.geofence_geojson || building.polygon_geojson
-                    ? `Batas poligon aktif${polygonPoints ? ` (${polygonPoints} titik koordinat)` : ''}.`
-                    : 'Batas presensi belum diatur.'}
-                </p>
-                {building.keterangan && <p className="admin-building-description">{building.keterangan}</p>}
-                <div className="admin-building-actions">
-                  <button type="button" className="admin-secondary-button" onClick={() => openForm(building)}>
-                    Edit
-                  </button>
-                  <button type="button" className="admin-secondary-button" onClick={() => toggleBuilding(building)}>
-                    {active ? 'Nonaktifkan' : 'Aktifkan'}
-                  </button>
-                  {roomCount === 0 && (
-                    <button type="button" className="admin-secondary-button danger" onClick={() => deleteBuilding(building)}>
-                      Hapus
-                    </button>
-                  )}
-                </div>
-              </Card>
-            );
-          })}
-        </div>
+        <Card hoverable={false} style={{ padding: 0, overflow: 'hidden' }}>
+          <div className="admin-room-table-wrap">
+            <table className="admin-room-table">
+              <thead>
+                <tr>
+                  <th>Nama Gedung</th>
+                  <th>Status</th>
+                  <th>Lantai &amp; Kamar</th>
+                  <th>Penanggung Jawab</th>
+                  <th>Jumlah Penghuni</th>
+                  <th style={{ textAlign: 'center' }}>Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleBuildings.map((building) => {
+                  const active = Boolean(building.is_active);
+                  const roomCount = Number(building.jumlah_kamar ?? building.kamars_count ?? building.kamars?.length ?? 0);
+                  const floorCount = Number(building.jumlah_lantai ?? building.lantais?.length ?? 0);
+                  const residentCount = Number(building.jumlah_penghuni ?? 0);
+
+                  return (
+                    <tr key={building.id}>
+                      <td data-label="Nama Gedung">
+                        <strong style={{ fontSize: '14px' }}>{building.nama}</strong>
+                      </td>
+                      <td data-label="Status">
+                        <Badge variant={active ? 'success' : 'neutral'} size="sm">
+                          {active ? 'Aktif' : 'Nonaktif'}
+                        </Badge>
+                      </td>
+                      <td data-label="Lantai & Kamar" style={{ color: 'var(--color-neutral)' }}>
+                        {floorCount} lantai · {roomCount} kamar
+                      </td>
+                      <td data-label="Penanggung Jawab" style={{ color: 'var(--color-neutral)' }}>
+                        {building.fasil?.nama || building.user?.nama || building.nama_fasil || 'Belum ditentukan'}
+                      </td>
+                      <td data-label="Jumlah Penghuni">
+                        <Badge variant={residentCount > 0 ? 'success' : 'neutral'} size="sm">
+                          {residentCount} mahasiswa
+                        </Badge>
+                      </td>
+                      <td data-label="Aksi" style={{ textAlign: 'center' }}>
+                        <div className="admin-inline-actions">
+                          <Button size="sm" variant="ghost" icon={Edit2} onClick={() => openForm(building)}>
+                            Edit
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            icon={Power}
+                            style={{ color: active ? 'var(--color-warning)' : 'var(--color-primary)' }}
+                            onClick={() => toggleBuilding(building)}
+                          >
+                            {active ? 'Nonaktifkan' : 'Aktifkan'}
+                          </Button>
+                          {roomCount === 0 && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              icon={Trash2}
+                              style={{ color: 'var(--color-error)' }}
+                              onClick={() => deleteBuilding(building)}
+                            >
+                              Hapus
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
 
       {formOpen && (
@@ -271,38 +351,25 @@ export default function KelolaGedung() {
             <form onSubmit={submitForm}>
               <div className="admin-management-dialog-heading">
                 <div>
-                  <h2 id="building-form-title">{editing ? 'Edit gedung' : 'Tambah gedung'}</h2>
-                  <p>Atur data gedung dan area poligon untuk validasi presensi.</p>
+                  <h2 id="building-form-title">{editing ? 'Edit Gedung Asrama' : 'Tambah Gedung Baru'}</h2>
+                  <p>Isi identitas gedung di bawah ini, lalu tentukan batas poligon gedung pada peta.</p>
                 </div>
                 <button type="button" className="admin-dialog-close" onClick={closeForm} aria-label="Tutup form">×</button>
               </div>
 
-              <label className="admin-form-field">
-                Nama gedung
-                <input
-                  required
-                  value={form.nama}
-                  onChange={(event) => setForm({ ...form, nama: event.target.value })}
-                  placeholder="Contoh: Asrama Putra A"
-                />
-              </label>
-
-              <label className="admin-form-field">
-                Fasil penanggung jawab
-                <select
-                  value={form.id_user}
-                  onChange={(event) => setForm({ ...form, id_user: event.target.value })}
-                >
-                  <option value="">Belum ditentukan</option>
-                  {fasilitators.map((fasil) => (
-                    <option key={fasil.id} value={fasil.id}>{fasil.nama} {fasil.email ? `(${fasil.email})` : ''}</option>
-                  ))}
-                </select>
-              </label>
-
-              {!editing && (
+              <div className="admin-form-grid-3">
                 <label className="admin-form-field">
-                  Jumlah lantai awal
+                  <span>Nama Gedung <em style={{ color: 'var(--color-primary)', fontStyle: 'normal' }}>*</em></span>
+                  <input
+                    required
+                    value={form.nama}
+                    onChange={(event) => setForm({ ...form, nama: event.target.value })}
+                    placeholder="Contoh: RPX atau Rusunawa"
+                  />
+                </label>
+
+                <label className="admin-form-field">
+                  <span>Jumlah Lantai <em style={{ color: 'var(--color-primary)', fontStyle: 'normal' }}>*</em></span>
                   <input
                     required
                     type="number"
@@ -313,20 +380,32 @@ export default function KelolaGedung() {
                     onChange={(event) => setForm({ ...form, jumlah_lantai: event.target.value })}
                   />
                 </label>
-              )}
+
+                <label className="admin-form-field">
+                  <span>Fasil Penanggung Jawab</span>
+                  <select
+                    value={form.id_user}
+                    onChange={(event) => setForm({ ...form, id_user: event.target.value })}
+                  >
+                    <option value="">Belum ditentukan</option>
+                    {fasilitators.map((fasil) => (
+                      <option key={fasil.id} value={fasil.id}>{fasil.nama}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
 
               <label className="admin-form-field">
-                Keterangan
-                <textarea
-                  rows="2"
+                Keterangan Gedung (Opsional)
+                <input
                   value={form.keterangan}
                   onChange={(event) => setForm({ ...form, keterangan: event.target.value })}
-                  placeholder="Keterangan gedung (opsional)"
+                  placeholder="Contoh: Gedung asrama mahasiswa putra"
                 />
               </label>
 
               <fieldset className="admin-polygon-fieldset">
-                <legend>Batas area presensi</legend>
+                <legend>Area Poligon Presensi Gedung</legend>
                 <Suspense fallback={<p className="text-body">Memuat editor peta...</p>}>
                   <BuildingPolygonEditor
                     value={form.geofence_geojson}
@@ -337,10 +416,10 @@ export default function KelolaGedung() {
                     }}
                   />
                 </Suspense>
-                {geoJsonFeatures.length > 0 && !editing && (
+                {geoJsonFeatures.length > 1 && !editing && (
                   <div className="building-geojson-import">
                     <p className="text-body">
-                      {geoJsonFeatures.length} area terdeteksi. Nama area dicocokkan persis dengan gedung yang sudah ada; area tanpa pasangan akan dibuat sebagai gedung baru.
+                      File berisi {geoJsonFeatures.length} area poligon sekaligus. Anda dapat menyimpan area yang sedang dipilih dengan tombol <strong>Simpan Gedung</strong>, atau mengimpor semuanya sekaligus:
                     </p>
                     <button
                       type="button"
@@ -348,7 +427,7 @@ export default function KelolaGedung() {
                       onClick={importGeoJsonBuildings}
                       disabled={saving}
                     >
-                      {saving ? 'Menyimpan area...' : `Simpan semua ${geoJsonFeatures.length} area ke database`}
+                      {saving ? 'Menyimpan area...' : `Impor sekaligus ${geoJsonFeatures.length} gedung`}
                     </button>
                     {geoImportResult && <p className="admin-management-notice" role="status">{geoImportResult}</p>}
                   </div>
@@ -358,12 +437,8 @@ export default function KelolaGedung() {
               {error && <p className="admin-management-error" role="alert">{error}</p>}
               <div className="admin-management-dialog-actions">
                 <button type="button" className="admin-secondary-button" onClick={closeForm}>Batal</button>
-                <button
-                  type="submit"
-                  className="admin-action-button"
-                  disabled={saving || (!editing && geoJsonFeatures.length > 0)}
-                >
-                  {saving ? 'Menyimpan...' : 'Simpan gedung'}
+                <button type="submit" className="admin-action-button" disabled={saving}>
+                  {saving ? 'Menyimpan...' : 'Simpan Gedung'}
                 </button>
               </div>
             </form>

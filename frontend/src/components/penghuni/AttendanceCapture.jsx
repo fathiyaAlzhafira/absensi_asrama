@@ -19,6 +19,7 @@ export default function AttendanceCapture({
   coords,
   building,
   geofenceStatus,
+  onOpenCamera,
   onSubmitted
 }) {
   const videoRef = useRef(null);
@@ -72,6 +73,7 @@ export default function AttendanceCapture({
     setPhoto('');
     setSubmitted(false);
     setModalOpen(true);
+    onOpenCamera?.();
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraError('Browser ini tidak mendukung kamera. Gunakan browser terbaru melalui HTTPS atau localhost.');
       return;
@@ -115,6 +117,8 @@ export default function AttendanceCapture({
       return;
     }
 
+    context.translate(canvas.width, 0);
+    context.scale(-1, 1);
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
     setPhoto(canvas.toDataURL('image/jpeg', 0.82));
     setStream(null);
@@ -231,7 +235,14 @@ export default function AttendanceCapture({
                 {cameraLoading && <div className="resident-camera-placeholder">Menyiapkan kamera...</div>}
                 {stream && (
                   <div className="resident-camera-preview">
-                    <video ref={videoRef} autoPlay playsInline muted aria-label="Pratinjau kamera" />
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      aria-label="Pratinjau kamera"
+                      style={{ transform: 'scaleX(-1)' }}
+                    />
                     <Button type="button" variant="primary" onClick={capturePhoto}>
                       Ambil foto
                     </Button>
@@ -240,7 +251,7 @@ export default function AttendanceCapture({
                 {photo && (
                   <div className="resident-camera-preview">
                     <img src={photo} alt="Pratinjau foto presensi" />
-                    <Button type="button" variant="secondary" onClick={() => setPhoto('')}>
+                    <Button type="button" variant="secondary" onClick={startCamera}>
                       Foto ulang
                     </Button>
                   </div>

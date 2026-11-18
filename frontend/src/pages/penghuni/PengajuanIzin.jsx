@@ -29,6 +29,7 @@ export default function PengajuanIzin() {
   });
   const [selectedFile, setSelectedFile] = useState(null);
   const [existingIzins, setExistingIzins] = useState([]);
+  const [existingPresensis, setExistingPresensis] = useState([]);
   const [loading, setLoading] = useState(false);
   const [popup, setPopup] = useState(null);
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
@@ -60,6 +61,14 @@ export default function PengajuanIzin() {
       })
       .catch(() => {});
 
+    api.getMyPresensi()
+      .then((res) => {
+        if (res && Array.isArray(res.data)) {
+          setExistingPresensis(res.data);
+        }
+      })
+      .catch(() => {});
+
     api.getPengaturanPresensi()
       .then((res) => {
         if (res?.data) setSchedule(savePresensiSchedule(res.data));
@@ -79,6 +88,73 @@ export default function PengajuanIzin() {
   };
 
   const durationDays = getDurationDays();
+
+  const toMinutes = (hhmm) => {
+    const [h, m] = String(hhmm || '00:00').split(':').map(Number);
+    return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+  };
+
+  const getCurrentWibMinutes = () => {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Jakarta',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23'
+    }).formatToParts(new Date());
+    const hour = Number(parts.find((p) => p.type === 'hour')?.value || 0);
+    const minute = Number(parts.find((p) => p.type === 'minute')?.value || 0);
+    return hour * 60 + minute;
+  };
+
+  const getClosedTodaySessionError = (startDateStr, chosenSesi = formData.sesi) => {
+    if (!startDateStr || startDateStr !== todayStr) return null;
+    const currentMin = getCurrentWibMinutes();
+    const subuhEndMin = toMinutes(schedule.jam_subuh_selesai);
+    const malamEndMin = toMinutes(schedule.jam_malam_selesai);
+
+    if (chosenSesi === 'subuh' && currentMin >= subuhEndMin) {
+      return {
+        title: 'Sesi Subuh Hari Ini Sudah Berakhir',
+        message: `Batas waktu Sesi Subuh hari ini (pukul ${schedule.jam_subuh_selesai} WIB) sudah ditutup. Pengajuan izin hanya dapat dilakukan sebelum sesi presensi berakhir.`
+      };
+    }
+    if (chosenSesi === 'malam' && currentMin >= malamEndMin) {
+      return {
+        title: 'Sesi Malam Hari Ini Sudah Berakhir',
+        message: `Batas waktu Sesi Malam hari ini (pukul ${schedule.jam_malam_selesai} WIB) sudah ditutup. Pengajuan izin hanya dapat dilakukan sebelum sesi presensi berakhir.`
+      };
+    }
+    if (chosenSesi === 'semua') {
+      if (currentMin >= malamEndMin) {
+        return {
+          title: 'Sesi Presensi Hari Ini Sudah Berakhir',
+          message: 'Seluruh sesi presensi hari ini (Subuh & Malam) sudah berakhir. Silakan ajukan izin mulai tanggal besok.'
+        };
+      }
+      if (currentMin >= subuhEndMin) {
+        return {
+          title: 'Sesi Subuh Hari Ini Sudah Berakhir',
+          message: `Sesi Subuh hari ini (pukul ${schedule.jam_subuh_selesai} WIB) sudah ditutup sehingga tidak dapat diajukan dalam 'Semua Sesi' untuk hari ini. Jika ingin izin untuk malam ini, pilih 'Hanya Sesi Malam', atau mulai izin 'Semua Sesi' dari tanggal besok.`
+        };
+      }
+    }
+    return null;
+  };
+
+  const findAttendedPresensi = (startDateStr, endDateStr, chosenSesi = formData.sesi) => {
+    if (!startDateStr || !endDateStr) return null;
+    const newStart = startDateStr.substring(0, 10);
+    const newEnd = endDateStr.substring(0, 10);
+
+    return existingPresensis.find((p) => {
+      const st = String(p.status || '').toLowerCase();
+      if (!['hadir', 'terlambat', 'alpa', 'alfa'].includes(st)) return false;
+      const pDate = typeof p.tanggal === 'string' ? p.tanggal.substring(0, 10) : '';
+      if (!pDate || pDate < newStart || pDate > newEnd) return false;
+      if (chosenSesi === 'semua') return true;
+      return p.sesi === chosenSesi;
+    });
+  };
 
   const findOverlappingPermit = (startDateStr, endDateStr, chosenSesi = formData.sesi) => {
     if (!startDateStr || !endDateStr) return null;
@@ -102,6 +178,16 @@ export default function PengajuanIzin() {
   };
 
   const handleSesiChange = (newSesi) => {
+    if (formData.tanggal_mulai === todayStr) {
+      const closedErr = getClosedTodaySessionError(todayStr, newSesi);
+      if (closedErr) {
+        setPopup({
+          type: 'error',
+          title: closedErr.title,
+          message: closedErr.message
+        });
+      }
+    }
     setFormData((prev) => ({
       ...prev,
       sesi: newSesi,
@@ -120,6 +206,16 @@ export default function PengajuanIzin() {
       return;
     }
 
+    const closedErr = getClosedTodaySessionError(newDate, formData.sesi);
+    if (closedErr) {
+      setPopup({
+        type: 'error',
+        title: closedErr.title,
+        message: closedErr.message
+      });
+      return;
+    }
+
     setFormData((prev) => ({
       ...prev,
       tanggal_mulai: newDate,
@@ -134,6 +230,16 @@ export default function PengajuanIzin() {
         type: 'error',
         title: 'Tanggal Tidak Valid',
         message: 'Tanggal mulai izin tidak boleh tanggal yang sudah lampau. Silakan pilih tanggal hari ini atau yang akan datang.'
+      });
+      return;
+    }
+
+    const closedErr = getClosedTodaySessionError(newStart, formData.sesi);
+    if (closedErr) {
+      setPopup({
+        type: 'error',
+        title: closedErr.title,
+        message: closedErr.message
       });
       return;
     }
@@ -291,6 +397,35 @@ export default function PengajuanIzin() {
     }
 
     const targetEnd = formData.sesi === 'semua' ? formData.tanggal_selesai : formData.tanggal_mulai;
+
+    const closedSessionError = getClosedTodaySessionError(formData.tanggal_mulai, formData.sesi);
+    if (closedSessionError) {
+      setPopup({
+        type: 'error',
+        title: closedSessionError.title,
+        message: closedSessionError.message
+      });
+      return;
+    }
+
+    const attended = findAttendedPresensi(formData.tanggal_mulai, targetEnd, formData.sesi);
+    if (attended) {
+      const attendedDate = typeof attended.tanggal === 'string' ? attended.tanggal.substring(0, 10) : formData.tanggal_mulai;
+      const attendedSesiLabel = attended.sesi === 'subuh' ? 'Sesi Subuh' : 'Sesi Malam';
+      const isAlfa = ['alpa', 'alfa'].includes(String(attended.status || '').toLowerCase());
+      const saranSesi = attended.sesi === 'subuh' ? 'Hanya Sesi Malam' : 'Hanya Sesi Subuh';
+      setPopup({
+        type: 'error',
+        title: isAlfa ? 'Sesi Sudah Tercatat Alfa' : 'Presensi Sudah Tercatat',
+        message: isAlfa
+          ? `${attendedSesiLabel} pada tanggal ${attendedDate} sudah berakhir dan tercatat Alfa. Pengajuan izin hanya dapat dilakukan sebelum sesi presensi berakhir.`
+          : formData.sesi === 'semua'
+            ? `Anda sudah melakukan presensi ${attendedSesiLabel} pada tanggal ${attendedDate}. Tidak dapat mengajukan izin 'Semua Sesi' pada hari yang sesinya sudah dihadiri (pilih '${saranSesi}' jika ingin izin untuk sesi lainnya).`
+            : `Anda sudah melakukan presensi ${attendedSesiLabel} pada tanggal ${attendedDate}. Tidak dapat mengajukan izin untuk sesi yang sudah dihadiri.`
+      });
+      return;
+    }
+
     const overlap = findOverlappingPermit(formData.tanggal_mulai, targetEnd, formData.sesi);
     if (overlap) {
       const overlapStart = overlap.tanggal_mulai ? overlap.tanggal_mulai.substring(0, 10) : '';
@@ -719,7 +854,10 @@ export default function PengajuanIzin() {
           </Card>
         </div>
 
-        <RiwayatStatusIzin refreshKey={historyRefreshKey} />
+        <RiwayatStatusIzin
+          refreshKey={historyRefreshKey}
+          onPermitChanged={() => setHistoryRefreshKey((key) => key + 1)}
+        />
       </div>
 
       {/* Pop Up Modal (Berhasil / Tidak Berhasil) */}

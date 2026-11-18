@@ -107,7 +107,7 @@ export function getPresensiScheduleState(date = new Date(), customSchedule = nul
   const jadwalPresensi = buildJadwalPresensi(customSchedule);
   const minutes = getWibMinutes(date);
   const activeSession = jadwalPresensi.find(
-    (session) => minutes >= session.mulai && minutes < session.selesai
+    (session) => session.selesai > session.mulai && minutes >= session.mulai && minutes < session.selesai
   ) || null;
 
   let nextSession = null;

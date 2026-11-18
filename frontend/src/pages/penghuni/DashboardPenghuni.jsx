@@ -56,11 +56,12 @@ const getNamaWilayah = ({ latitude, longitude }) => {
 };
 
 export default function DashboardPenghuni() {
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
   const [now, setNow] = useState(() => new Date());
   const [scheduleConfig, setScheduleConfig] = useState(() => getStoredPresensiSchedule());
   const [todayStatus, setTodayStatus] = useState({ subuh: null, malam: null });
   const [building, setBuilding] = useState(null);
+  const [room, setRoom] = useState(null);
   const [buildingError, setBuildingError] = useState('');
   const [riwayatTerbaru, setRiwayatTerbaru] = useState([]);
   const [riwayatLoading, setRiwayatLoading] = useState(true);
@@ -69,6 +70,9 @@ export default function DashboardPenghuni() {
 
   const { activeSession, nextSession } = getPresensiScheduleState(now, scheduleConfig);
   const sessionStatus = activeSession ? todayStatus[activeSession.id] : null;
+  const nextSessionStatus = !activeSession && nextSession && !nextSession.besok
+    ? todayStatus[nextSession.id]
+    : null;
   const presensiTercatat = Boolean(sessionStatus);
   const buildingGeometry = building?.geofence_geojson || building?.polygon_geojson || building?.polygon || null;
   const geofenceStatus = building && !building.is_active
@@ -119,19 +123,38 @@ export default function DashboardPenghuni() {
     perbaruiLokasi();
   }, [perbaruiLokasi]);
 
-  useEffect(() => {
-    let active = true;
-    api.getMyBuildingAssignment().then((response) => {
-      if (!active) return;
+  const muatGedungSaya = useCallback(() => {
+    setBuildingError('');
+    return api.getMyBuildingAssignment().then((response) => {
       const assignment = response?.data?.gedung || response?.data?.building || response?.data;
+      const assignedRoom = response?.data?.kamar || null;
       setBuilding(assignment && typeof assignment === 'object' ? assignment : null);
+      setRoom(assignedRoom && typeof assignedRoom === 'object' ? assignedRoom : null);
+      if (assignment?.nama || assignedRoom?.nomor_kamar) {
+        setUser((prev) => {
+          if (!prev) return prev;
+          const nextNomorKamar = assignedRoom?.nomor_kamar ?? prev.nomor_kamar ?? null;
+          const nextGedung = assignment?.nama ?? prev.gedung ?? null;
+          if (prev.nomor_kamar === nextNomorKamar && prev.kamar === nextNomorKamar && prev.gedung === nextGedung) {
+            return prev;
+          }
+          return {
+            ...prev,
+            kamar_id: assignedRoom?.id ?? prev.kamar_id,
+            nomor_kamar: nextNomorKamar,
+            kamar: nextNomorKamar,
+            gedung: nextGedung
+          };
+        });
+      }
     }).catch((error) => {
-      if (active) setBuildingError(error.message || 'Gedung tempat tinggal gagal dimuat.');
+      setBuildingError(error.message || 'Gedung tempat tinggal gagal dimuat.');
     });
-    return () => {
-      active = false;
-    };
-  }, []);
+  }, [setUser]);
+
+  useEffect(() => {
+    muatGedungSaya();
+  }, [muatGedungSaya]);
 
   useEffect(() => {
     let active = true;
@@ -188,13 +211,14 @@ export default function DashboardPenghuni() {
   }, []);
 
   const tanggalHariIni = getWibDateKey(now);
+  const nomorKamar = room?.nomor_kamar || user?.nomor_kamar || user?.kamar;
 
   return (
     <div className="resident-page resident-dashboard">
       <Card hoverable={false} className="resident-greeting-card">
         <h1 className="text-page-title">Halo, {user?.nama || 'Penghuni Asrama'}</h1>
         <p className="text-body">
-          {user?.nomor_kamar || user?.kamar ? `Kamar ${user.nomor_kamar || user.kamar} · ` : ''}
+          {nomorKamar ? `Kamar ${nomorKamar} · ` : ''}
           {building?.nama || user?.gedung || 'Asrama Unand'}
         </p>
       </Card>
@@ -242,19 +266,22 @@ export default function DashboardPenghuni() {
                 {presensiTercatat && (
                   <p className="resident-attendance-recorded">
                     {sessionStatus.status === 'izin'
-                      ? `Status Sesi ${activeSession.label}: Izin telah disetujui.`
-                      : `Presensi tercatat${sessionStatus.waktu ? ` pukul ${sessionStatus.waktu}` : ''}.`}
+                      ? `✓ Status Sesi ${activeSession.label}: Tercatat Izin (Disetujui). Anda tidak perlu mengambil presensi.`
+                      : sessionStatus.status === 'izin_pending'
+                        ? `Status Sesi ${activeSession.label}: Pengajuan izin sedang menunggu verifikasi.`
+                        : `✓ Presensi ${activeSession.label} telah tercatat${sessionStatus.waktu ? ` pukul ${sessionStatus.waktu} WIB` : ''}.`}
                   </p>
                 )}
                 {statusError && <p className="resident-dashboard-error">{statusError}</p>}
               </div>
 
-              {!presensiTercatat && (
+              {!presensiTercatat ? (
                 <AttendanceCapture
                   session={activeSession}
                   coords={lokasi.status === 'ready' ? lokasi.coords : null}
                   building={building}
                   geofenceStatus={geofenceStatus}
+                  onOpenCamera={muatGedungSaya}
                   onSubmitted={() => {
                     const waktu = formatJam(new Date());
                     setTodayStatus((current) => ({
@@ -270,6 +297,25 @@ export default function DashboardPenghuni() {
                     }, ...current].slice(0, 3));
                   }}
                 />
+              ) : (
+                <Button
+                  variant="secondary"
+                  size="lg"
+                  disabled
+                  className="resident-attendance-button"
+                  style={sessionStatus.status === 'izin' ? {
+                    borderColor: 'var(--color-primary)',
+                    color: 'var(--color-primary)',
+                    backgroundColor: 'rgba(29, 185, 84, 0.12)',
+                    opacity: 1
+                  } : undefined}
+                >
+                  {sessionStatus.status === 'izin'
+                    ? `Tercatat Izin Sesi ${activeSession.label} (Tidak Perlu Absen)`
+                    : sessionStatus.status === 'izin_pending'
+                      ? `Menunggu Verifikasi Izin Sesi ${activeSession.label}`
+                      : `Presensi ${activeSession.label} Sudah Tercatat`}
+                </Button>
               )}
             </>
           ) : (
@@ -279,14 +325,33 @@ export default function DashboardPenghuni() {
                 <p className="text-body">
                   {nextSession.besok ? 'Dibuka besok' : 'Dibuka'} pukul {nextSession.jamMulai} WIB.
                 </p>
+                {nextSessionStatus && (
+                  <p className="resident-attendance-recorded">
+                    {nextSessionStatus.status === 'izin'
+                      ? `✓ Status Sesi ${nextSession.label}: Tercatat Izin (Disetujui). Anda tidak perlu mengambil presensi.`
+                      : nextSessionStatus.status === 'izin_pending'
+                        ? `Status Sesi ${nextSession.label}: Pengajuan izin sedang menunggu verifikasi.`
+                        : `✓ Presensi ${nextSession.label} telah tercatat.`}
+                  </p>
+                )}
               </div>
               <Button
                 variant="secondary"
                 size="lg"
                 disabled
                 className="resident-attendance-button"
+                style={nextSessionStatus?.status === 'izin' ? {
+                  borderColor: 'var(--color-primary)',
+                  color: 'var(--color-primary)',
+                  backgroundColor: 'rgba(29, 185, 84, 0.12)',
+                  opacity: 1
+                } : undefined}
               >
-                Ambil presensi {nextSession.label}
+                {nextSessionStatus?.status === 'izin'
+                  ? `Tercatat Izin Sesi ${nextSession.label} (Tidak Perlu Absen)`
+                  : nextSessionStatus?.status === 'izin_pending'
+                    ? `Menunggu Verifikasi Izin Sesi ${nextSession.label}`
+                    : `Ambil presensi ${nextSession.label}`}
               </Button>
             </>
           )}

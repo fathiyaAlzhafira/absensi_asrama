@@ -56,8 +56,12 @@ final class GeoJsonFence
      *
      * @param array{type: string, coordinates: array<mixed>} $geometry
      */
-    public static function contains(array $geometry, float $latitude, float $longitude): bool
-    {
+    public static function contains(
+        array $geometry,
+        float $latitude,
+        float $longitude,
+        float $toleranceMeters = 0.0
+    ): bool {
         if (!is_finite($latitude) || !is_finite($longitude)
             || $latitude < -90 || $latitude > 90 || $longitude < -180 || $longitude > 180) {
             return false;
@@ -69,11 +73,6 @@ final class GeoJsonFence
             : $geometry['coordinates'];
 
         foreach ($polygons as $polygon) {
-            $outer = self::ringRelation($polygon[0], $longitude, $latitude);
-            if ($outer === 0) {
-                continue;
-            }
-
             $inHole = false;
             foreach (array_slice($polygon, 1) as $hole) {
                 $holeRelation = self::ringRelation($hole, $longitude, $latitude);
@@ -82,12 +81,60 @@ final class GeoJsonFence
                     break;
                 }
             }
-            if (!$inHole) {
+            if ($inHole) {
+                continue;
+            }
+
+            $outer = self::ringRelation($polygon[0], $longitude, $latitude);
+            if ($outer !== 0) {
+                return true;
+            }
+
+            if ($toleranceMeters > 0.0
+                && self::distanceToRingMeters($polygon[0], $longitude, $latitude) <= $toleranceMeters) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * @param array<mixed> $ring
+     */
+    private static function distanceToRingMeters(array $ring, float $lng, float $lat): float
+    {
+        $count = count($ring);
+        if ($count < 2) {
+            return INF;
+        }
+        $cosLat = cos(deg2rad($lat));
+        $metersPerDegLng = 111320.0 * $cosLat;
+        $metersPerDegLat = 110540.0;
+
+        $minDistance = INF;
+        for ($i = 0, $j = $count - 1; $i < $count; $j = $i++) {
+            $x1 = ((float)$ring[$j][0] - $lng) * $metersPerDegLng;
+            $y1 = ((float)$ring[$j][1] - $lat) * $metersPerDegLat;
+            $x2 = ((float)$ring[$i][0] - $lng) * $metersPerDegLng;
+            $y2 = ((float)$ring[$i][1] - $lat) * $metersPerDegLat;
+
+            $dx = $x2 - $x1;
+            $dy = $y2 - $y1;
+            $lenSq = ($dx * $dx) + ($dy * $dy);
+            $t = 0.0;
+            if ($lenSq > 0.0) {
+                $t = max(0.0, min(1.0, -(($x1 * $dx) + ($y1 * $dy)) / $lenSq));
+            }
+            $cx = $x1 + ($t * $dx);
+            $cy = $y1 + ($t * $dy);
+            $dist = hypot($cx, $cy);
+            if ($dist < $minDistance) {
+                $minDistance = $dist;
+            }
+        }
+
+        return $minDistance;
     }
 
     private static function validateRing(mixed $ring): array

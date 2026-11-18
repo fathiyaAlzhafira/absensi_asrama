@@ -66,10 +66,17 @@ class PengaturanPresensiController extends ApiController
         $malamSelesai = $this->toMinutes($times['jam_malam_selesai']);
 
         if ($subuhSelesai <= $subuhMulai) {
-            return $this->jsonError('Jam selesai Subuh harus setelah jam mulai Subuh.', 422);
+            return $this->jsonError('Jam selesai Subuh harus lebih besar dari jam mulai Subuh (format 24 jam).', 422);
         }
         if ($malamSelesai <= $malamMulai) {
-            return $this->jsonError('Jam selesai Malam harus setelah jam mulai Malam.', 422);
+            $hint = '';
+            if ($malamSelesai > 0 && $malamSelesai < (12 * 60) && ($malamSelesai + 12 * 60) > $malamMulai) {
+                $pmHour = (int)floor($malamSelesai / 60) + 12;
+                $pmMin = $malamSelesai % 60;
+                $suggested = sprintf('%02d:%02d', $pmHour, $pmMin);
+                $hint = sprintf(' Gunakan format 24 jam (misalnya %s untuk jam %s malam).', $suggested, $times['jam_malam_selesai']);
+            }
+            return $this->jsonError('Jam selesai Malam harus setelah jam mulai Malam.' . $hint, 422);
         }
         if ($malamMulai < $subuhSelesai) {
             return $this->jsonError('Jadwal Malam tidak boleh bertabrakan dengan jadwal Subuh.', 422);
@@ -135,8 +142,8 @@ class PengaturanPresensiController extends ApiController
 
     private function formatTimeField(mixed $value, string $fallback): string
     {
-        if ($value instanceof \DateTimeInterface) {
-            return $value->format('H:i');
+        if (is_object($value) && method_exists($value, 'format')) {
+            return (string)$value->format('H:i');
         }
         $normalized = $this->normalizeTime((string)$value);
 

@@ -108,7 +108,19 @@ class AuthController extends ApiController
             );
             $user = $usersTable->patchEntity($user, $data);
             if ($usersTable->save($user)) {
-                return $this->jsonSuccess($user->toArray(), 'Profil berhasil diperbarui.');
+                return $this->jsonSuccess([
+                    'id' => $user->id,
+                    'nama' => $user->nama,
+                    'nim' => $user->nim,
+                    'email' => $user->email,
+                    'role' => $user->role,
+                    'asal' => $user->asal,
+                    'jekel' => $user->jekel,
+                    'no_hp' => $user->no_hp,
+                    'kamar_id' => $user->kamar_id,
+                    'nomor_kamar' => $user->kamar ? $user->kamar->nomor_kamar : null,
+                    'gedung' => ($user->kamar && $user->kamar->gedung) ? $user->kamar->gedung->nama : 'Asrama Unand',
+                ], 'Profil berhasil diperbarui.');
             }
             return $this->jsonError('Gagal memperbarui profil.', 422, $user->getErrors());
         }
@@ -163,7 +175,13 @@ class AuthController extends ApiController
 
         $user->password = password_hash($passwordBaru, PASSWORD_DEFAULT);
         if ($usersTable->save($user)) {
-            $this->fetchTable('AuthTokens')->deleteAll(['user_id' => $user->id]);
+            $currentTokenHash = $this->bearerTokenHash();
+            if ($currentTokenHash !== null) {
+                $this->fetchTable('AuthTokens')->deleteAll([
+                    'user_id' => $user->id,
+                    'token_hash !=' => $currentTokenHash,
+                ]);
+            }
             return $this->jsonSuccess([], 'Password berhasil diubah.');
         }
 
