@@ -118,10 +118,10 @@ export function AuthProvider({ children }) {
 
   /**
    * Login ke backend.
+   * Tidak mengubah global `loading` agar halaman Login tidak ter-unmount
+   * oleh PublicRoute ketika kredensial salah dan pesan error tetap tampil.
    */
   const login = async (credentials) => {
-    setLoading(true);
-
     try {
       const response = await api.login(credentials);
 
@@ -154,10 +154,8 @@ export function AuthProvider({ children }) {
         success: false,
         message:
           error.message ||
-          'Koneksi gagal atau kredensial salah.',
+          'Email/NIM atau password salah. Periksa kembali keduanya.',
       };
-    } finally {
-      setLoading(false);
     }
   };
 

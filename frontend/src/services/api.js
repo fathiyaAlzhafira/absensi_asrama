@@ -56,7 +56,15 @@ export async function apiRequest(endpoint, options = {}) {
     }
   }
 
-  const responseData = await response.json().catch(() => ({}));
+  const rawText = await response.text();
+  let responseData = {};
+  if (rawText) {
+    try {
+      responseData = JSON.parse(rawText);
+    } catch {
+      responseData = { _raw: rawText.slice(0, 200) };
+    }
+  }
 
   if (response.status === 401 && endpoint !== '/auth/login') {
     clearInvalidSession();
@@ -73,6 +81,10 @@ export async function apiRequest(endpoint, options = {}) {
     error.status = response.status;
     error.errors = responseData.errors;
     throw error;
+  }
+
+  if (responseData._raw) {
+    throw new Error(`Respons server tidak valid (bukan JSON): ${responseData._raw.replace(/<[^>]+>/g, ' ').trim().slice(0, 120)}`);
   }
 
   return responseData;

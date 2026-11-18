@@ -221,15 +221,19 @@ class ApiController extends AppController
         array $data,
         int $status = 200
     ): Response {
+        $json = json_encode(
+            $data,
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR
+        );
+        if ($json === false) {
+            $json = '{"status":"error","message":"Gagal memformat respons JSON dari server."}';
+            $status = 500;
+        }
+
         return $this->response
             ->withType('application/json')
             ->withStatus($status)
-            ->withStringBody(
-                (string)json_encode(
-                    $data,
-                    JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
-                )
-            );
+            ->withStringBody($json);
     }
 
     protected function jsonSuccess(

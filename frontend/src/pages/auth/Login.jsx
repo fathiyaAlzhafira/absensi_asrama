@@ -10,6 +10,7 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [fieldError, setFieldError] = useState('');
   const [successNotice, setSuccessNotice] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -27,6 +28,7 @@ export default function Login() {
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
+    setFieldError('');
     setSuccessNotice('');
     setLoading(true);
 
@@ -41,7 +43,9 @@ export default function Login() {
           navigate('/penghuni/dashboard');
         }
       } else {
-        setError(res.message || 'Login gagal. Periksa kembali Email/NIM dan password Anda.');
+        const msg = res.message || 'Email/NIM atau password salah. Periksa kembali Email/NIM dan password Anda.';
+        setError(msg);
+        setFieldError('Email/NIM atau password tidak sesuai.');
       }
     } catch {
       setError('Terjadi kendala saat menghubungi server backend.');
@@ -258,7 +262,12 @@ export default function Login() {
               label="Email atau NIM"
               placeholder="Contoh: 2311521001 atau nama@unand.ac.id"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (fieldError) setFieldError('');
+                if (error) setError('');
+              }}
+              error={fieldError}
               icon={Mail}
               required
             />
@@ -269,7 +278,12 @@ export default function Login() {
                 type="password"
                 placeholder="Masukkan password Anda"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (fieldError) setFieldError('');
+                  if (error) setError('');
+                }}
+                error={fieldError}
                 icon={Lock}
                 required
               />

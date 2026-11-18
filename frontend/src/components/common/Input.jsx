@@ -78,7 +78,11 @@ export default function Input({
             height: '42px',
             backgroundColor: 'var(--color-surface-l2)',
             color: 'var(--color-text-primary)',
-            border: isFocused ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
+            border: error
+              ? '1px solid var(--color-error)'
+              : isFocused
+                ? '1px solid var(--color-primary)'
+                : '1px solid var(--color-border)',
             borderRadius: 'var(--radius-sm)',
             paddingLeft: Icon ? '40px' : '12px',
             paddingRight: isPassword ? '40px' : '12px',

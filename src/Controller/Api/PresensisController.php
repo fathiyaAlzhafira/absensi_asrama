@@ -330,17 +330,17 @@ class PresensisController extends ApiController
         $formattedData = [];
         foreach ($results as $p) {
             $waktuStr = '-';
-            if ($p->waktu instanceof \DateTimeInterface) {
+            if (is_object($p->waktu) && method_exists($p->waktu, 'format')) {
                 $waktuStr = $p->waktu->format('H:i') . ' WIB';
             } elseif (!empty($p->waktu)) {
                 $waktuStr = substr((string)$p->waktu, 0, 5) . ' WIB';
             }
 
             $tanggalStr = '';
-            if ($p->tanggal instanceof \DateTimeInterface) {
+            if (is_object($p->tanggal) && method_exists($p->tanggal, 'format')) {
                 $tanggalStr = $p->tanggal->format('Y-m-d');
             } else {
-                $tanggalStr = (string)$p->tanggal;
+                $tanggalStr = substr((string)$p->tanggal, 0, 10);
             }
 
             $latLong = '-';
@@ -492,19 +492,29 @@ class PresensisController extends ApiController
      */
     public function laporan(): Response
     {
+        $this->request->allowMethod(['get', 'options']);
+        if ($this->request->is('options')) {
+            return $this->response->withStatus(200);
+        }
+
         $user = $this->requireAuth(['fasil', 'admin']);
         if (!$user) {
             return $this->authErrorResponse;
         }
 
+        try {
         $presensisTable = $this->fetchTable('Presensis');
         $query = $presensisTable->find()
             ->contain([
                 'Users' => [
+                    'joinType' => 'LEFT',
                     'Kamars' => [
-                        'Gedungs'
-                    ]
-                ]
+                        'joinType' => 'LEFT',
+                        'Gedungs' => [
+                            'joinType' => 'LEFT',
+                        ],
+                    ],
+                ],
             ]);
 
         $gedungInfo = null;
@@ -560,12 +570,54 @@ class PresensisController extends ApiController
                 ])
                 ->toArray();
         } else {
-            // Admin: ambil semua kamar
+            // Admin: opsional filter gedung_id dan ambil daftar kamar
+            $gedungIdParam = $this->request->getQuery('gedung_id');
+            if (!empty($gedungIdParam) && $gedungIdParam !== 'all' && $gedungIdParam !== 'Semua') {
+                $gedungsTable = $this->fetchTable('Gedungs');
+                $gedungRow = $gedungsTable->find()->where(['Gedungs.id' => (int)$gedungIdParam])->first();
+                if ($gedungRow !== null) {
+                    $gedungInfo = [
+                        'id' => $gedungRow->id,
+                        'nama' => $gedungRow->nama,
+                    ];
+                }
+                $penghuniIds = $this->getPenghuniUserIdsByGedung((int)$gedungIdParam);
+                if (empty($penghuniIds)) {
+                    return $this->jsonSuccess([
+                        'gedung' => $gedungInfo,
+                        'kamars' => [],
+                        'ringkasan' => [
+                            'total_presensi' => 0,
+                            'jumlah_hadir' => 0,
+                            'jumlah_terlambat' => 0,
+                            'total_hadir' => 0,
+                            'jumlah_izin' => 0,
+                            'jumlah_tidak_hadir' => 0,
+                            'persentase_kehadiran' => 0.0,
+                        ],
+                        'rekap_mahasiswa' => [],
+                        'rekap_gedung' => [],
+                        'filter_terpasang' => [
+                            'start_date' => $this->request->getQuery('start_date') ?: $this->request->getQuery('tanggal_mulai'),
+                            'end_date' => $this->request->getQuery('end_date') ?: $this->request->getQuery('tanggal_akhir'),
+                            'sesi' => $this->request->getQuery('sesi') ?: 'Semua',
+                            'kamar' => $this->request->getQuery('kamar') ?: 'Semua',
+                            'gedung_id' => $gedungIdParam,
+                        ],
+                        'data' => [],
+                    ]);
+                }
+                $query->where(['Presensis.user_id IN' => $penghuniIds]);
+            }
+
             $kamarsTable = $this->fetchTable('Kamars');
-            $kamarsList = $kamarsTable->find()
+            $kamarsQuery = $kamarsTable->find()
                 ->select(['id', 'nomor_kamar', 'gedung_id'])
-                ->orderBy(['Kamars.nomor_kamar' => 'ASC'])
-                ->all()
+                ->orderBy(['Kamars.nomor_kamar' => 'ASC']);
+            if (!empty($gedungIdParam) && $gedungIdParam !== 'all' && $gedungIdParam !== 'Semua') {
+                $kamarsQuery->where(['Kamars.gedung_id' => (int)$gedungIdParam]);
+            }
+            $kamarsList = $kamarsQuery->all()
                 ->map(fn($k) => [
                     'id' => $k->id,
                     'nomor_kamar' => $k->nomor_kamar,
@@ -632,6 +684,8 @@ class PresensisController extends ApiController
         $jumlahIzin = 0;
         $jumlahTidakHadir = 0;
         $formattedData = [];
+        $rekapMahasiswaMap = [];
+        $rekapGedungMap = [];
 
         foreach ($results as $p) {
             $status = strtolower((string)$p->status);
@@ -641,31 +695,81 @@ class PresensisController extends ApiController
                 $jumlahTerlambat++;
             } elseif ($status === 'izin') {
                 $jumlahIzin++;
-            } elseif ($status === 'alpa') {
+            } elseif (in_array($status, ['alpa', 'alfa'], true)) {
                 $jumlahTidakHadir++;
             }
 
             $waktuStr = '-';
-            if ($p->waktu instanceof \DateTimeInterface) {
+            if (is_object($p->waktu) && method_exists($p->waktu, 'format')) {
                 $waktuStr = $p->waktu->format('H:i') . ' WIB';
             } elseif (!empty($p->waktu)) {
                 $waktuStr = substr((string)$p->waktu, 0, 5) . ' WIB';
             }
 
             $tanggalStr = '';
-            if ($p->tanggal instanceof \DateTimeInterface) {
+            if (is_object($p->tanggal) && method_exists($p->tanggal, 'format')) {
                 $tanggalStr = $p->tanggal->format('Y-m-d');
             } else {
-                $tanggalStr = (string)$p->tanggal;
+                $tanggalStr = substr((string)$p->tanggal, 0, 10);
             }
+
+            $namaUser = $p->user ? $p->user->nama : '-';
+            $nimUser = $p->user ? $p->user->nim : '-';
+            $kamarUser = ($p->user && $p->user->kamar) ? $p->user->kamar->nomor_kamar : '-';
+            $gedungUser = ($p->user && $p->user->kamar && $p->user->kamar->gedung)
+                ? $p->user->kamar->gedung->nama
+                : ($gedungInfo['nama'] ?? '-');
+
+            $uid = (int)$p->user_id;
+            if (!isset($rekapMahasiswaMap[$uid])) {
+                $rekapMahasiswaMap[$uid] = [
+                    'user_id' => $uid,
+                    'nama' => $namaUser,
+                    'nim' => $nimUser ?: '-',
+                    'gedung' => $gedungUser,
+                    'kamar' => $kamarUser,
+                    'hadir' => 0,
+                    'izin' => 0,
+                    'alfa' => 0,
+                    'total' => 0,
+                    'persentase_hadir' => 0.0,
+                ];
+            }
+            if ($status === 'hadir' || $status === 'terlambat') {
+                $rekapMahasiswaMap[$uid]['hadir']++;
+            } elseif ($status === 'izin') {
+                $rekapMahasiswaMap[$uid]['izin']++;
+            } elseif (in_array($status, ['alpa', 'alfa'], true)) {
+                $rekapMahasiswaMap[$uid]['alfa']++;
+            }
+            $rekapMahasiswaMap[$uid]['total']++;
+
+            if (!isset($rekapGedungMap[$gedungUser])) {
+                $rekapGedungMap[$gedungUser] = [
+                    'gedung' => $gedungUser,
+                    'hadir' => 0,
+                    'izin' => 0,
+                    'alfa' => 0,
+                    'total' => 0,
+                    'persentase_hadir' => 0.0,
+                ];
+            }
+            if ($status === 'hadir' || $status === 'terlambat') {
+                $rekapGedungMap[$gedungUser]['hadir']++;
+            } elseif ($status === 'izin') {
+                $rekapGedungMap[$gedungUser]['izin']++;
+            } elseif (in_array($status, ['alpa', 'alfa'], true)) {
+                $rekapGedungMap[$gedungUser]['alfa']++;
+            }
+            $rekapGedungMap[$gedungUser]['total']++;
 
             $formattedData[] = [
                 'id' => $p->id,
                 'user_id' => $p->user_id,
-                'nama' => $p->user ? $p->user->nama : '-',
-                'nim' => $p->user ? $p->user->nim : '-',
-                'kamar' => ($p->user && $p->user->kamar) ? $p->user->kamar->nomor_kamar : '-',
-                'gedung' => ($p->user && $p->user->kamar && $p->user->kamar->gedung) ? $p->user->kamar->gedung->nama : ($gedungInfo['nama'] ?? '-'),
+                'nama' => $namaUser,
+                'nim' => $nimUser,
+                'kamar' => $kamarUser,
+                'gedung' => $gedungUser,
                 'sesi' => ucfirst(strtolower((string)$p->sesi)),
                 'tanggal' => $tanggalStr,
                 'waktu' => $waktuStr,
@@ -673,6 +777,25 @@ class PresensisController extends ApiController
                 'keterangan' => $p->keterangan ?? '-',
             ];
         }
+
+        foreach ($rekapMahasiswaMap as &$mRow) {
+            $mRow['persentase_hadir'] = $mRow['total'] > 0
+                ? round(($mRow['hadir'] / $mRow['total']) * 100, 1)
+                : 0.0;
+        }
+        unset($mRow);
+
+        foreach ($rekapGedungMap as &$gRow) {
+            $gRow['persentase_hadir'] = $gRow['total'] > 0
+                ? round(($gRow['hadir'] / $gRow['total']) * 100, 1)
+                : 0.0;
+        }
+        unset($gRow);
+
+        $rekapMahasiswa = array_values($rekapMahasiswaMap);
+        usort($rekapMahasiswa, static fn($a, $b) => strcmp((string)$a['nama'], (string)$b['nama']));
+        $rekapGedung = array_values($rekapGedungMap);
+        usort($rekapGedung, static fn($a, $b) => strcmp((string)$a['gedung'], (string)$b['gedung']));
 
         $totalPresensi = count($formattedData);
         $totalHadirKeseluruhan = $jumlahHadir + $jumlahTerlambat;
@@ -690,14 +813,20 @@ class PresensisController extends ApiController
                 'jumlah_tidak_hadir' => $jumlahTidakHadir,
                 'persentase_kehadiran' => $persentaseKehadiran,
             ],
+            'rekap_mahasiswa' => $rekapMahasiswa,
+            'rekap_gedung' => $rekapGedung,
             'filter_terpasang' => [
                 'start_date' => $startDate,
                 'end_date' => $endDate,
                 'sesi' => $sesiParam ?: 'Semua',
                 'kamar' => $kamarParam ?: 'Semua',
+                'gedung_id' => $this->request->getQuery('gedung_id') ?: 'all',
             ],
             'data' => $formattedData,
         ]);
+        } catch (\Throwable $e) {
+            return $this->jsonError('Gagal memuat data laporan: ' . $e->getMessage(), 500);
+        }
     }
     /**
      * Riwayat Presensi Pengguna
