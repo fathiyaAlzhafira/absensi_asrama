@@ -65,15 +65,21 @@ class PresensisController extends ApiController
             ->all();
 
         $subuhIzinStatus = null;
+        $subuhIzinId = null;
         $malamIzinStatus = null;
+        $malamIzinId = null;
         foreach ($activeIzins as $iz) {
             if ($iz->sesi === 'semua' || empty($iz->sesi)) {
                 $subuhIzinStatus = $iz->status;
+                $subuhIzinId = $iz->id;
                 $malamIzinStatus = $iz->status;
+                $malamIzinId = $iz->id;
             } elseif ($iz->sesi === 'subuh') {
                 $subuhIzinStatus = $iz->status;
+                $subuhIzinId = $iz->id;
             } elseif ($iz->sesi === 'malam') {
                 $malamIzinStatus = $iz->status;
+                $malamIzinId = $iz->id;
             }
         }
 
@@ -82,12 +88,14 @@ class PresensisController extends ApiController
             : ($subuhIzinStatus ? [
                 'status' => $subuhIzinStatus === 'pending' ? 'izin_pending' : 'izin',
                 'waktu' => $subuhIzinStatus === 'pending' ? 'Menunggu Verifikasi' : 'Izin Disetujui',
+                'izin_id' => $subuhIzinId,
             ] : null);
         $malamData = $malam
             ? ['status' => $malam->status, 'waktu' => $malam->waktu->format('H:i')]
             : ($malamIzinStatus ? [
                 'status' => $malamIzinStatus === 'pending' ? 'izin_pending' : 'izin',
                 'waktu' => $malamIzinStatus === 'pending' ? 'Menunggu Verifikasi' : 'Izin Disetujui',
+                'izin_id' => $malamIzinId,
             ] : null);
 
         return $this->jsonSuccess([
@@ -152,10 +160,10 @@ class PresensisController extends ApiController
         }
 
         $todayStr = $now->format('Y-m-d');
-        $existingIzin = $this->fetchTable('Izins')->find()
+        $approvedIzin = $this->fetchTable('Izins')->find()
             ->where([
                 'user_id' => $user->id,
-                'status IN' => ['pending', 'disetujui'],
+                'status' => 'disetujui',
                 'tanggal_mulai <=' => $todayStr,
                 'tanggal_selesai >=' => $todayStr,
                 'OR' => [
@@ -164,9 +172,9 @@ class PresensisController extends ApiController
                 ],
             ])
             ->first();
-        if ($existingIzin !== null) {
+        if ($approvedIzin !== null) {
             return $this->jsonError(
-                'Anda sudah memiliki pengajuan izin aktif untuk sesi ' . $sesi . ' hari ini.',
+                'Anda sudah memiliki izin yang disetujui untuk sesi ' . $sesi . ' hari ini.',
                 409
             );
         }
@@ -245,6 +253,15 @@ class PresensisController extends ApiController
         try {
             $presensi = $presensisTable->newEntity($data);
             if ($presensisTable->save($presensi)) {
+                // Hapus izin pending pada sesi dan tanggal ini karena penghuni sudah berhasil presensi hadir
+                $this->fetchTable('Izins')->deleteAll([
+                    'user_id' => $user->id,
+                    'status' => 'pending',
+                    'tanggal_mulai' => $todayStr,
+                    'tanggal_selesai' => $todayStr,
+                    'sesi' => $sesi,
+                ]);
+
                 return $this->jsonSuccess($presensi->toArray(), 'Presensi berhasil dicatat!', 201);
             }
         } catch (\Throwable $error) {
@@ -449,9 +466,9 @@ class PresensisController extends ApiController
                     continue;
                 }
 
-                $hasActivePermit = $izinsTable->exists([
+                $hasApprovedPermit = $izinsTable->exists([
                     'user_id' => $userId,
-                    'status IN' => ['pending', 'disetujui'],
+                    'status' => 'disetujui',
                     'tanggal_mulai <=' => $evalDate,
                     'tanggal_selesai >=' => $evalDate,
                     'OR' => [
@@ -460,7 +477,7 @@ class PresensisController extends ApiController
                     ],
                 ]);
 
-                if (!$hasActivePermit) {
+                if (!$hasApprovedPermit) {
                     $alpaEntity = $presensisTable->newEntity([
                         'user_id' => $userId,
                         'tanggal' => $evalDate,

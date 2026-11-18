@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CheckCircle2, MapPin, X } from 'lucide-react';
+import { AlertCircle, CheckCircle2, MapPin, X } from 'lucide-react';
 import Button from '../common/Button';
 import { api } from '../../services/api';
 import { getPresensiScheduleState } from '../../utils/presensiSchedule';
@@ -19,6 +19,8 @@ export default function AttendanceCapture({
   coords,
   building,
   geofenceStatus,
+  pendingIzinId,
+  onCancelPendingIzin,
   onOpenCamera,
   onSubmitted
 }) {
@@ -33,6 +35,9 @@ export default function AttendanceCapture({
   const [submitted, setSubmitted] = useState(false);
   const [cameraLoading, setCameraLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
+  const [cancelingIzin, setCancelingIzin] = useState(false);
+  const [cancelIzinError, setCancelIzinError] = useState('');
 
   useEffect(() => {
     activeRef.current = true;
@@ -65,6 +70,34 @@ export default function AttendanceCapture({
     setCameraError('');
     setSubmitError('');
     setSubmitted(false);
+  };
+
+  const handleInitialClick = () => {
+    if (pendingIzinId) {
+      setCancelIzinError('');
+      setConfirmCancelOpen(true);
+      return;
+    }
+    startCamera();
+  };
+
+  const handleConfirmCancelIzin = async () => {
+    if (!pendingIzinId) return;
+    setCancelingIzin(true);
+    setCancelIzinError('');
+    try {
+      const res = await api.cancelIzin(pendingIzinId);
+      if (res?.status !== 'success') {
+        throw new Error(res?.message || 'Gagal membatalkan pengajuan izin.');
+      }
+      setConfirmCancelOpen(false);
+      onCancelPendingIzin?.();
+      startCamera();
+    } catch (err) {
+      setCancelIzinError(err.message || 'Gagal membatalkan pengajuan izin.');
+    } finally {
+      setCancelingIzin(false);
+    }
   };
 
   const startCamera = async () => {
@@ -165,9 +198,83 @@ export default function AttendanceCapture({
 
   return (
     <div className="resident-camera-capture">
-      <Button type="button" variant="primary" size="lg" onClick={startCamera}>
+      <Button type="button" variant="primary" size="lg" onClick={handleInitialClick}>
         Ambil foto presensi {session.label}
       </Button>
+
+      {confirmCancelOpen && (
+        <div
+          className="resident-camera-modal"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !cancelingIzin) setConfirmCancelOpen(false);
+          }}
+        >
+          <section
+            className="resident-camera-dialog"
+            role="dialog"
+            aria-modal="true"
+            style={{ maxWidth: '430px' }}
+          >
+            <header className="resident-camera-dialog-header">
+              <div>
+                <h2>Pengajuan Izin Sesi {session.label} Aktif</h2>
+                <p>Anda sedang memiliki pengajuan izin yang menunggu verifikasi.</p>
+              </div>
+              <button
+                type="button"
+                className="resident-camera-close"
+                onClick={() => setConfirmCancelOpen(false)}
+                disabled={cancelingIzin}
+                aria-label="Tutup"
+              >
+                <X size={20} />
+              </button>
+            </header>
+
+            <div style={{
+              backgroundColor: 'rgba(245, 155, 35, 0.12)',
+              border: '1px solid var(--color-warning)',
+              borderRadius: '10px',
+              padding: '14px',
+              fontSize: '13px',
+              lineHeight: 1.55,
+              color: 'var(--color-text-primary)',
+              display: 'flex',
+              gap: '10px',
+              alignItems: 'flex-start'
+            }}>
+              <AlertCircle size={18} style={{ color: 'var(--color-warning)', flexShrink: 0, marginTop: '2px' }} />
+              <div>
+                Untuk mengambil presensi <strong>Sesi {session.label}</strong>, pengajuan izin Anda yang sedang menunggu verifikasi perlu dibatalkan terlebih dahulu. Apakah Anda ingin membatalkan izin dan lanjut mengambil foto presensi?
+              </div>
+            </div>
+
+            {cancelIzinError && (
+              <p className="resident-camera-error" role="alert">{cancelIzinError}</p>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '4px' }}>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setConfirmCancelOpen(false)}
+                disabled={cancelingIzin}
+              >
+                Kembali
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={handleConfirmCancelIzin}
+                disabled={cancelingIzin}
+              >
+                {cancelingIzin ? 'Membatalkan Izin...' : 'Batalkan Izin & Ambil Presensi'}
+              </Button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {modalOpen && (
         <div
@@ -276,7 +383,21 @@ export default function AttendanceCapture({
             )}
 
             {cameraError && <p className="resident-camera-error" role="alert">{cameraError}</p>}
-            {submitError && <p className="resident-camera-error" role="alert">{submitError}</p>}
+            {submitError && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <p className="resident-camera-error" role="alert">{submitError}</p>
+                {pendingIzinId && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={handleConfirmCancelIzin}
+                    disabled={cancelingIzin}
+                  >
+                    {cancelingIzin ? 'Membatalkan Izin...' : 'Batalkan Pengajuan Izin & Coba Lagi'}
+                  </Button>
+                )}
+              </div>
+            )}
           </section>
         </div>
       )}

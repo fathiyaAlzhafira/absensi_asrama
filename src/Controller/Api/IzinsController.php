@@ -311,19 +311,9 @@ class IzinsController extends ApiController
             return $this->jsonError('Data pengajuan izin tidak ditemukan.', 404);
         }
 
-        $today = (new \DateTimeImmutable('now', new \DateTimeZone('Asia/Jakarta')))->format('Y-m-d');
-        $endDateStr = is_object($izin->tanggal_selesai) && method_exists($izin->tanggal_selesai, 'format')
-            ? $izin->tanggal_selesai->format('Y-m-d')
-            : substr((string)$izin->tanggal_selesai, 0, 10);
-
-        if ($izin->status === 'ditolak') {
-            return $this->jsonError('Pengajuan izin yang sudah ditolak tidak dapat dibatalkan.', 422);
+        if ($izin->status !== 'pending') {
+            return $this->jsonError('Izin yang sudah diverifikasi tidak dapat dibatalkan.', 422);
         }
-        if ($izin->status === 'disetujui' && $endDateStr < $today) {
-            return $this->jsonError('Izin yang masa berlakunya sudah lewat tidak dapat dibatalkan.', 422);
-        }
-
-        $this->removePermitAttendance($izin);
 
         if ($izinsTable->delete($izin)) {
             return $this->jsonSuccess([], 'Pengajuan izin berhasil dibatalkan.');

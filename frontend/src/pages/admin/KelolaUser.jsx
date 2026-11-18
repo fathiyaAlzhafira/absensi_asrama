@@ -3,7 +3,7 @@ import Card from '../../components/common/Card';
 import Badge from '../../components/common/Badge';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
-import { UserPlus, Search, Edit2, Trash2, X, Check, RefreshCw, AlertCircle, CheckCircle } from 'lucide-react';
+import { UserPlus, Search, Edit2, Trash2, X, Check, RefreshCw, AlertCircle, CheckCircle, RotateCcw } from 'lucide-react';
 import { api } from '../../services/api';
 
 export default function KelolaUser() {
@@ -114,17 +114,15 @@ export default function KelolaUser() {
     });
   }, [kamars, selectedGedungId, selectedLantai, roomSearch]);
 
-  // Buat password default dari Nama Gedung Asrama + NIM (mis. RPX2311521001)
-  const buildDefaultPassword = (gedungIdVal, nimVal) => {
-    const foundBuilding = buildingOptions.find((b) => String(b.id) === String(gedungIdVal));
-    const buildingPrefix = foundBuilding?.nama
-      ? String(foundBuilding.nama).replace(/\s+/g, '')
-      : 'Asrama';
+  // Buat password default dari Kata Pertama Nama + NIM (mis. Ahmad2311521001)
+  const buildDefaultPassword = (namaVal, nimVal) => {
+    const firstWord = String(namaVal || '').trim().split(/\s+/)[0] || '';
+    const cleanFirstWord = firstWord.replace(/[^A-Za-z0-9]/g, '');
     const cleanNim = String(nimVal || '').replace(/\D/g, '');
-    return `${buildingPrefix}${cleanNim}`;
+    return `${cleanFirstWord}${cleanNim}`;
   };
 
-  const defaultPasswordSuggestion = buildDefaultPassword(selectedGedungId, formData.nim);
+  const defaultPasswordSuggestion = buildDefaultPassword(formData.nama, formData.nim);
 
   const showToast = (type, message) => {
     setNotification({ type, message });
@@ -149,7 +147,7 @@ export default function KelolaUser() {
       asal: '',
       jekel: 'L',
       no_hp: '',
-      password: 'Asrama'
+      password: ''
     });
     setIsModalOpen(true);
   };
@@ -180,12 +178,10 @@ export default function KelolaUser() {
     setSelectedGedungId(nextGedungId);
     setSelectedLantai('');
     setRoomSearch('');
-    const nextDefaultPwd = buildDefaultPassword(nextGedungId, formData.nim);
     if (!nextGedungId) {
       setFormData((prev) => ({
         ...prev,
-        kamar_id: '',
-        password: (!editingUserId && !customPasswordEdited) ? nextDefaultPwd : prev.password
+        kamar_id: ''
       }));
       return;
     }
@@ -193,8 +189,7 @@ export default function KelolaUser() {
     const firstAvailable = roomsInBuilding.find((r) => (r.jumlah_penghuni ?? 0) < (r.kapasitas ?? 4)) || roomsInBuilding[0];
     setFormData((prev) => ({
       ...prev,
-      kamar_id: firstAvailable ? String(firstAvailable.id) : '',
-      password: (!editingUserId && !customPasswordEdited) ? nextDefaultPwd : prev.password
+      kamar_id: firstAvailable ? String(firstAvailable.id) : ''
     }));
   };
 
@@ -530,12 +525,26 @@ export default function KelolaUser() {
               </div>
             )}
 
-            <form onSubmit={handleSaveUser} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <form onSubmit={handleSaveUser} autoComplete="off" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* Input umpan tersembunyi agar browser Chrome tidak melakukan autofill email & password login ke form tambah pengguna */}
+              <input type="text" name="fake_username_autofill" autoComplete="username" style={{ display: 'none' }} tabIndex={-1} readOnly />
+              <input type="password" name="fake_password_autofill" autoComplete="current-password" style={{ display: 'none' }} tabIndex={-1} readOnly />
+
               <Input
                 label="Nama Lengkap"
+                name="user_full_name"
+                autoComplete="off"
                 required
                 value={formData.nama}
-                onChange={(e) => setFormData({ ...formData, nama: e.target.value })}
+                onChange={(e) => {
+                  const nextNama = e.target.value;
+                  const nextDefaultPwd = buildDefaultPassword(nextNama, formData.nim);
+                  setFormData((prev) => ({
+                    ...prev,
+                    nama: nextNama,
+                    password: (!editingUserId && !customPasswordEdited) ? nextDefaultPwd : prev.password
+                  }));
+                }}
                 placeholder="Masukkan nama lengkap"
               />
 
@@ -543,6 +552,8 @@ export default function KelolaUser() {
                 <Input
                   label="Email Kampus"
                   type="email"
+                  name="user_campus_email"
+                  autoComplete="off"
                   required
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
@@ -551,13 +562,15 @@ export default function KelolaUser() {
                 <Input
                   label="NIM (Nomor Induk)"
                   type="text"
+                  name="user_nim_number"
+                  autoComplete="off"
                   inputMode="numeric"
                   pattern="[0-9]*"
                   maxLength={20}
                   value={formData.nim}
                   onChange={(e) => {
                     const digitsOnly = e.target.value.replace(/\D/g, '');
-                    const nextDefaultPwd = buildDefaultPassword(selectedGedungId, digitsOnly);
+                    const nextDefaultPwd = buildDefaultPassword(formData.nama, digitsOnly);
                     setFormData((prev) => ({
                       ...prev,
                       nim: digitsOnly,
@@ -739,17 +752,57 @@ export default function KelolaUser() {
                 />
               </div>
 
-              <Input
-                label={editingUserId ? 'Password Baru (Kosongkan jika tidak diubah)' : 'Password Awal'}
-                type="password"
-                required={!editingUserId}
-                value={formData.password}
-                onChange={(e) => {
-                  setCustomPasswordEdited(true);
-                  setFormData({ ...formData, password: e.target.value });
-                }}
-                placeholder={editingUserId ? 'Isi hanya jika ingin mereset password' : 'Minimal 6 karakter'}
-              />
+              {editingUserId ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--color-neutral)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Reset Password
+                  </label>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px',
+                    padding: '10px 14px',
+                    borderRadius: 'var(--radius-sm)',
+                    backgroundColor: 'var(--color-surface-l2)',
+                    border: formData.password ? '1px solid var(--color-primary)' : '1px solid var(--color-border)'
+                  }}>
+                    <span style={{ fontSize: '13px', color: formData.password ? 'var(--color-primary)' : 'var(--color-text-secondary)', fontWeight: formData.password ? '600' : '400' }}>
+                      {formData.password
+                        ? `✓ Password akan direset ke default: ${formData.password}`
+                        : `Kembalikan password ke default (${defaultPasswordSuggestion || 'NamaAwal + NIM'})`}
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={formData.password ? 'ghost' : 'secondary'}
+                      icon={RotateCcw}
+                      onClick={() => {
+                        setFormData((prev) => ({
+                          ...prev,
+                          password: prev.password ? '' : defaultPasswordSuggestion
+                        }));
+                      }}
+                    >
+                      {formData.password ? 'Batal Reset' : 'Reset Password'}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Input
+                  label="Password Awal"
+                  type="password"
+                  name="new_account_initial_password"
+                  autoComplete="new-password"
+                  required
+                  value={formData.password}
+                  onChange={(e) => {
+                    setCustomPasswordEdited(true);
+                    setFormData({ ...formData, password: e.target.value });
+                  }}
+                  placeholder="Otomatis NamaAwal + NIM"
+                />
+              )}
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '12px' }}>
                 <Button variant="ghost" onClick={() => setIsModalOpen(false)} disabled={submitting}>

@@ -3,16 +3,9 @@ import Card from '../../components/common/Card';
 import Badge from '../../components/common/Badge';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
-import { Clock, Save, CheckCircle, AlertCircle, RotateCcw } from 'lucide-react';
+import { Clock, Save, CheckCircle, AlertCircle } from 'lucide-react';
 import { api } from '../../services/api';
 import { getStoredPresensiSchedule, savePresensiSchedule } from '../../utils/presensiSchedule';
-
-const DEFAULT_SCHEDULE = {
-  jam_subuh_mulai: '04:00',
-  jam_subuh_selesai: '06:00',
-  jam_malam_mulai: '18:00',
-  jam_malam_selesai: '20:30'
-};
 
 function calcDurationText(start, end) {
   const parse = (val) => {
@@ -201,16 +194,6 @@ export default function PengaturanPresensi() {
               </p>
             </div>
             <div className="admin-schedule-actions">
-              <button
-                type="button"
-                className="admin-secondary-button"
-                onClick={() => setConfig(DEFAULT_SCHEDULE)}
-                disabled={saving}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-              >
-                <RotateCcw size={15} />
-                <span>Kembalikan Default</span>
-              </button>
               <Button type="submit" variant="primary" size="md" icon={Save} disabled={saving}>
                 {saving ? 'Menyimpan...' : 'Simpan Jadwal Presensi'}
               </Button>

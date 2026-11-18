@@ -4,7 +4,6 @@ import Badge from '../common/Badge';
 import Button from '../common/Button';
 import { Clock, ExternalLink, FileText, X, Download, AlertCircle, Trash2 } from 'lucide-react';
 import { api } from '../../services/api';
-import { getWibDateKey } from '../../utils/presensiSchedule';
 
 const formatTanggal = (tanggal) => {
   if (!tanggal) return '-';
@@ -57,7 +56,6 @@ export default function RiwayatStatusIzin({ refreshKey = 0, onPermitChanged }) {
   const [retryKey, setRetryKey] = useState(0);
   const [previewFile, setPreviewFile] = useState(null);
   const [cancellingId, setCancellingId] = useState(null);
-  const todayStr = getWibDateKey(new Date());
 
   const handleCancelPermit = async (item) => {
     if (!window.confirm('Apakah Anda yakin ingin membatalkan pengajuan izin ini?')) return;
@@ -201,7 +199,7 @@ export default function RiwayatStatusIzin({ refreshKey = 0, onPermitChanged }) {
                   <Button size="sm" variant="ghost" icon={ExternalLink} onClick={() => setPreviewFile(item.bukti_file)}>
                     Buka berkas
                   </Button>
-                  {(item.status === 'pending' || (item.status === 'disetujui' && String(item.tanggal_selesai || '').slice(0, 10) >= todayStr)) && (
+                  {item.status === 'pending' && (
                     <Button
                       size="sm"
                       variant="ghost"
@@ -216,7 +214,7 @@ export default function RiwayatStatusIzin({ refreshKey = 0, onPermitChanged }) {
                 </div>
               </div>
             )}
-            {!item.bukti_file && (item.status === 'pending' || (item.status === 'disetujui' && String(item.tanggal_selesai || '').slice(0, 10) >= todayStr)) && (
+            {!item.bukti_file && item.status === 'pending' && (
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
                 <Button
                   size="sm"

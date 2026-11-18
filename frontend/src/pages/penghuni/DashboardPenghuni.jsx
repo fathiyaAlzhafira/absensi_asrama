@@ -73,7 +73,9 @@ export default function DashboardPenghuni() {
   const nextSessionStatus = !activeSession && nextSession && !nextSession.besok
     ? todayStatus[nextSession.id]
     : null;
-  const presensiTercatat = Boolean(sessionStatus);
+  // Tombol ambil presensi tetap aktif apabila pengajuan izin masih pending (belum disetujui),
+  // dan baru dinonaktifkan setelah presensi hadir tercatat atau izin resmi disetujui.
+  const presensiTercatat = Boolean(sessionStatus && sessionStatus.status !== 'izin_pending');
   const buildingGeometry = building?.geofence_geojson || building?.polygon_geojson || building?.polygon || null;
   const geofenceStatus = building && !building.is_active
     ? 'inactive'
@@ -263,8 +265,11 @@ export default function DashboardPenghuni() {
                   Dibuka pukul {activeSession.jamMulai}–{activeSession.jamSelesai} WIB.
                 </p>
                 {buildingError && <p className="resident-dashboard-error">{buildingError}</p>}
-                {presensiTercatat && (
-                  <p className="resident-attendance-recorded">
+                {sessionStatus && (
+                  <p
+                    className="resident-attendance-recorded"
+                    style={sessionStatus.status === 'izin_pending' ? { color: 'var(--color-warning)' } : undefined}
+                  >
                     {sessionStatus.status === 'izin'
                       ? `✓ Status Sesi ${activeSession.label}: Tercatat Izin (Disetujui). Anda tidak perlu mengambil presensi.`
                       : sessionStatus.status === 'izin_pending'
@@ -281,6 +286,13 @@ export default function DashboardPenghuni() {
                   coords={lokasi.status === 'ready' ? lokasi.coords : null}
                   building={building}
                   geofenceStatus={geofenceStatus}
+                  pendingIzinId={sessionStatus?.status === 'izin_pending' ? sessionStatus?.izin_id : null}
+                  onCancelPendingIzin={() => {
+                    setTodayStatus((current) => ({
+                      ...current,
+                      [activeSession.id]: null
+                    }));
+                  }}
                   onOpenCamera={muatGedungSaya}
                   onSubmitted={() => {
                     const waktu = formatJam(new Date());
@@ -326,7 +338,10 @@ export default function DashboardPenghuni() {
                   {nextSession.besok ? 'Dibuka besok' : 'Dibuka'} pukul {nextSession.jamMulai} WIB.
                 </p>
                 {nextSessionStatus && (
-                  <p className="resident-attendance-recorded">
+                  <p
+                    className="resident-attendance-recorded"
+                    style={nextSessionStatus.status === 'izin_pending' ? { color: 'var(--color-warning)' } : undefined}
+                  >
                     {nextSessionStatus.status === 'izin'
                       ? `✓ Status Sesi ${nextSession.label}: Tercatat Izin (Disetujui). Anda tidak perlu mengambil presensi.`
                       : nextSessionStatus.status === 'izin_pending'
@@ -349,9 +364,7 @@ export default function DashboardPenghuni() {
               >
                 {nextSessionStatus?.status === 'izin'
                   ? `Tercatat Izin Sesi ${nextSession.label} (Tidak Perlu Absen)`
-                  : nextSessionStatus?.status === 'izin_pending'
-                    ? `Menunggu Verifikasi Izin Sesi ${nextSession.label}`
-                    : `Ambil presensi ${nextSession.label}`}
+                  : `Ambil presensi ${nextSession.label}`}
               </Button>
             </>
           )}

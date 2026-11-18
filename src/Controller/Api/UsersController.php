@@ -97,17 +97,9 @@ class UsersController extends ApiController
             $data['nim'] = null;
         }
         if (empty($data['password'])) {
-            $buildingPrefix = 'Asrama';
-            if (!empty($data['kamar_id'])) {
-                $room = $this->fetchTable('Kamars')->find()
-                    ->where(['Kamars.id' => $data['kamar_id']])
-                    ->contain(['Gedungs'])
-                    ->first();
-                if ($room && $room->gedung && !empty($room->gedung->nama)) {
-                    $buildingPrefix = preg_replace('/\s+/', '', (string)$room->gedung->nama);
-                }
-            }
-            $defaultRawPassword = $buildingPrefix . ($data['nim'] ?? '123456');
+            $firstWord = explode(' ', trim((string)($data['nama'] ?? 'User')))[0] ?? 'User';
+            $cleanFirstWord = preg_replace('/[^A-Za-z0-9]/', '', $firstWord) ?: 'User';
+            $defaultRawPassword = $cleanFirstWord . ($data['nim'] ?? '123456');
             $data['password'] = password_hash($defaultRawPassword, PASSWORD_DEFAULT);
         } else {
             $data['password'] = password_hash($data['password'], PASSWORD_DEFAULT);

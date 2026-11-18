@@ -189,62 +189,7 @@ class AuthController extends ApiController
     }
 
     /**
-     * Permintaan Lupa Kata Sandi (Kirim Kode Reset ke Email)
-     * POST /api/auth/forgot-password
-     */
-    public function forgotPassword(): Response
-    {
-        $this->request->allowMethod(['post', 'options']);
-        if ($this->request->is('options')) {
-            return $this->response->withStatus(200);
-        }
-
-        $data = $this->request->getData();
-        $emailInput = trim((string)($data['email'] ?? ''));
-        if ($emailInput === '') {
-            return $this->jsonError('Masukkan alamat email kampus Anda yang terdaftar.', 422);
-        }
-
-        $usersTable = $this->fetchTable('Users');
-        $user = $usersTable->find()
-            ->where(['OR' => [
-                'Users.email' => $emailInput,
-                'Users.nim' => $emailInput,
-            ]])
-            ->first();
-
-        if ($user === null) {
-            return $this->jsonError('Akun dengan email/NIM tersebut tidak ditemukan di database asrama.', 404);
-        }
-
-        $resetCode = (string)random_int(100000, 999999);
-        $tokenHash = hash('sha256', 'reset:' . $user->id . ':' . $resetCode);
-
-        $tokensTable = $this->fetchTable('AuthTokens');
-        $now = new \DateTimeImmutable('now');
-        $tokenEntity = $tokensTable->newEntity([
-            'user_id' => $user->id,
-            'token_hash' => $tokenHash,
-            'expires_at' => $now->modify('+15 minutes')->format('Y-m-d H:i:s'),
-            'created_at' => $now->format('Y-m-d H:i:s'),
-        ]);
-
-        if (!$tokensTable->save($tokenEntity)) {
-            return $this->jsonError('Gagal membuat kode pemulihan kata sandi.', 500);
-        }
-
-        return $this->jsonSuccess([
-            'email' => $user->email,
-            'nama' => $user->nama,
-            'reset_code' => $resetCode,
-            'expires_in_minutes' => 15,
-            'email_subject' => 'Kode Pemulihan Kata Sandi - Portal Absensi Asrama Unand',
-            'email_from' => 'noreply-asrama@unand.ac.id',
-        ], 'Email pemulihan kata sandi telah dikirimkan.');
-    }
-
-    /**
-     * Simpan Kata Sandi Baru dari Fitur Lupa Kata Sandi
+     * Simpan Kata Sandi Baru dari Lupa Kata Sandi (Tanpa Email)
      * POST /api/auth/reset-password
      */
     public function resetPassword(): Response
@@ -256,11 +201,10 @@ class AuthController extends ApiController
 
         $data = $this->request->getData();
         $emailInput = trim((string)($data['email'] ?? ''));
-        $resetCode = trim((string)($data['reset_code'] ?? ''));
         $passwordBaru = (string)($data['password_baru'] ?? '');
 
-        if ($emailInput === '' || $resetCode === '' || $passwordBaru === '') {
-            return $this->jsonError('Email, kode verifikasi email, dan kata sandi baru wajib diisi.', 422);
+        if ($emailInput === '' || $passwordBaru === '') {
+            return $this->jsonError('Email/NIM dan kata sandi baru wajib diisi.', 422);
         }
 
         if (strlen($passwordBaru) < 6) {
@@ -276,27 +220,11 @@ class AuthController extends ApiController
             ->first();
 
         if ($user === null) {
-            return $this->jsonError('Akun tidak ditemukan.', 404);
-        }
-
-        $expectedHash = hash('sha256', 'reset:' . $user->id . ':' . $resetCode);
-        $tokensTable = $this->fetchTable('AuthTokens');
-        $validToken = $tokensTable->find()
-            ->where([
-                'user_id' => $user->id,
-                'token_hash' => $expectedHash,
-                'expires_at >' => (new \DateTimeImmutable('now'))->format('Y-m-d H:i:s'),
-            ])
-            ->first();
-
-        if ($validToken === null) {
-            return $this->jsonError('Kode verifikasi email tidak sesuai atau sudah kedaluwarsa.', 422);
+            return $this->jsonError('Akun dengan Email atau NIM tersebut tidak ditemukan.', 404);
         }
 
         $user->password = password_hash($passwordBaru, PASSWORD_DEFAULT);
         if ($usersTable->save($user)) {
-            $tokensTable->delete($validToken);
-
             return $this->jsonSuccess([], 'Kata sandi baru berhasil disimpan! Silakan masuk dengan kata sandi baru Anda.');
         }
 
