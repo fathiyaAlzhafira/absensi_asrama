@@ -19,99 +19,12 @@ class PresensisController extends ApiController
         if ($user instanceof Response) {
             return $user;
         }
+        $this->syncResidentHistory((int)$user->id);
+
         $presensisTable = $this->fetchTable('Presensis');
-
-        // Sinkronkan izin yang sudah disetujui ke tabel presensis agar langsung tercatat di riwayat
-        $approvedIzins = $this->fetchTable('Izins')->find()
-            ->where([
-                'user_id' => $user->id,
-                'status' => 'disetujui',
-            ])
-            ->all();
-        foreach ($approvedIzins as $izin) {
-            $startStr = is_object($izin->tanggal_mulai) && method_exists($izin->tanggal_mulai, 'format')
-                ? $izin->tanggal_mulai->format('Y-m-d')
-                : substr((string)$izin->tanggal_mulai, 0, 10);
-            $endStr = is_object($izin->tanggal_selesai) && method_exists($izin->tanggal_selesai, 'format')
-                ? $izin->tanggal_selesai->format('Y-m-d')
-                : substr((string)$izin->tanggal_selesai, 0, 10);
-            $sessions = ($izin->sesi === 'subuh' || $izin->sesi === 'malam')
-                ? [$izin->sesi]
-                : ['subuh', 'malam'];
-
-            $current = new \DateTimeImmutable($startStr);
-            $end = new \DateTimeImmutable($endStr);
-            while ($current <= $end) {
-                $dateStr = $current->format('Y-m-d');
-                foreach ($sessions as $sesi) {
-                    if (!$presensisTable->exists([
-                        'user_id' => $user->id,
-                        'tanggal' => $dateStr,
-                        'sesi' => $sesi,
-                    ])) {
-                        $entity = $presensisTable->newEntity([
-                            'user_id' => $user->id,
-                            'tanggal' => $dateStr,
-                            'waktu' => '00:00:00',
-                            'sesi' => $sesi,
-                            'status' => 'izin',
-                            'keterangan' => 'Izin disetujui: ' . ($izin->keterangan ?: $izin->jenis_izin),
-                        ]);
-                        $presensisTable->save($entity);
-                    }
-                }
-                $current = $current->modify('+1 day');
-            }
-        }
-
-        // Catat otomatis status alpa untuk sesi hari ini yang sudah melewati batas waktu selesai tanpa presensi/izin aktif
-        $now = new \DateTimeImmutable('now', new \DateTimeZone('Asia/Jakarta'));
-        $todayStr = $now->format('Y-m-d');
-        $currentMinutes = ((int)$now->format('G') * 60) + (int)$now->format('i');
-        $bounds = $this->scheduleBounds();
-
-        $closedSessionsToday = [];
-        if ($currentMinutes >= $bounds['subuh_selesai']) {
-            $closedSessionsToday[] = 'subuh';
-        }
-        if ($currentMinutes >= $bounds['malam_selesai']) {
-            $closedSessionsToday[] = 'malam';
-        }
-
-        foreach ($closedSessionsToday as $closedSesi) {
-            if ($presensisTable->exists([
-                'user_id' => $user->id,
-                'tanggal' => $todayStr,
-                'sesi' => $closedSesi,
-            ])) {
-                continue;
-            }
-            $hasActivePermit = $this->fetchTable('Izins')->exists([
-                'user_id' => $user->id,
-                'status IN' => ['pending', 'disetujui'],
-                'tanggal_mulai <=' => $todayStr,
-                'tanggal_selesai >=' => $todayStr,
-                'OR' => [
-                    ['sesi IN' => ['semua', $closedSesi]],
-                    ['sesi IS' => null],
-                ],
-            ]);
-            if (!$hasActivePermit) {
-                $alpaEntity = $presensisTable->newEntity([
-                    'user_id' => $user->id,
-                    'tanggal' => $todayStr,
-                    'waktu' => '00:00:00',
-                    'sesi' => $closedSesi,
-                    'status' => 'alpa',
-                    'keterangan' => 'Melewati batas waktu presensi',
-                ]);
-                $presensisTable->save($alpaEntity);
-            }
-        }
-
         $list = $presensisTable->find()
             ->where(['Presensis.user_id' => $user->id])
-            ->orderBy(['Presensis.tanggal' => 'DESC', 'Presensis.waktu' => 'DESC'])
+            ->orderBy(['Presensis.tanggal' => 'DESC', 'Presensis.id' => 'DESC'])
             ->all();
 
         return $this->jsonSuccess($list->toArray());
@@ -127,6 +40,8 @@ class PresensisController extends ApiController
         if ($user instanceof Response) {
             return $user;
         }
+        $this->syncResidentHistory((int)$user->id);
+
         $presensisTable = $this->fetchTable('Presensis');
         $today = (new \DateTimeImmutable('now', new \DateTimeZone('Asia/Jakarta')))->format('Y-m-d');
 
@@ -429,5 +344,134 @@ class PresensisController extends ApiController
             'malam_mulai' => $toMin($cfg['jam_malam_mulai']),
             'malam_selesai' => $toMin($cfg['jam_malam_selesai']),
         ];
+    }
+
+    /**
+     * Sinkronkan izin yang disetujui serta sesi yang terlewat (Alfa) ke dalam tabel presensis
+     * agar Riwayat Presensi selalu mencatat Hadir, Izin, maupun Alfa secara lengkap.
+     */
+    private function syncResidentHistory(int $userId): void
+    {
+        $presensisTable = $this->fetchTable('Presensis');
+        $izinsTable = $this->fetchTable('Izins');
+
+        // 1. Sinkronkan seluruh izin yang sudah disetujui ke tabel presensis
+        $approvedIzins = $izinsTable->find()
+            ->where([
+                'user_id' => $userId,
+                'status' => 'disetujui',
+            ])
+            ->all();
+
+        foreach ($approvedIzins as $izin) {
+            $startStr = is_object($izin->tanggal_mulai) && method_exists($izin->tanggal_mulai, 'format')
+                ? $izin->tanggal_mulai->format('Y-m-d')
+                : substr((string)$izin->tanggal_mulai, 0, 10);
+            $endStr = is_object($izin->tanggal_selesai) && method_exists($izin->tanggal_selesai, 'format')
+                ? $izin->tanggal_selesai->format('Y-m-d')
+                : substr((string)$izin->tanggal_selesai, 0, 10);
+            $sessions = ($izin->sesi === 'subuh' || $izin->sesi === 'malam')
+                ? [$izin->sesi]
+                : ['subuh', 'malam'];
+
+            $current = new \DateTimeImmutable($startStr);
+            $end = new \DateTimeImmutable($endStr);
+            while ($current <= $end) {
+                $dateStr = $current->format('Y-m-d');
+                foreach ($sessions as $sesi) {
+                    $existing = $presensisTable->find()
+                        ->where([
+                            'user_id' => $userId,
+                            'tanggal' => $dateStr,
+                            'sesi' => $sesi,
+                        ])
+                        ->first();
+                    if ($existing === null) {
+                        $entity = $presensisTable->newEntity([
+                            'user_id' => $userId,
+                            'tanggal' => $dateStr,
+                            'waktu' => '00:00:00',
+                            'sesi' => $sesi,
+                            'status' => 'izin',
+                            'keterangan' => 'Izin disetujui: ' . ($izin->keterangan ?: $izin->jenis_izin),
+                        ]);
+                        $presensisTable->save($entity);
+                    } elseif (in_array(strtolower((string)$existing->status), ['alpa', 'alfa'], true)) {
+                        $existing->status = 'izin';
+                        $existing->keterangan = 'Izin disetujui: ' . ($izin->keterangan ?: $izin->jenis_izin);
+                        $presensisTable->save($existing);
+                    }
+                }
+                $current = $current->modify('+1 day');
+            }
+        }
+
+        // 2. Catat otomatis status Alfa ('alpa') untuk setiap sesi yang sudah melewati jam selesai
+        $now = new \DateTimeImmutable('now', new \DateTimeZone('Asia/Jakarta'));
+        $todayStr = $now->format('Y-m-d');
+        $currentMinutes = ((int)$now->format('G') * 60) + (int)$now->format('i');
+        $bounds = $this->scheduleBounds();
+
+        // Kumpulkan tanggal yang perlu dievaluasi: hari ini + tanggal yang sudah memiliki aktivitas presensi
+        $datesToEvaluate = [$todayStr => true];
+        $existingDates = $presensisTable->find()
+            ->select(['tanggal'])
+            ->where(['user_id' => $userId, 'tanggal <=' => $todayStr])
+            ->all();
+        foreach ($existingDates as $row) {
+            $dStr = is_object($row->tanggal) && method_exists($row->tanggal, 'format')
+                ? $row->tanggal->format('Y-m-d')
+                : substr((string)$row->tanggal, 0, 10);
+            if ($dStr !== '' && $dStr <= $todayStr) {
+                $datesToEvaluate[$dStr] = true;
+            }
+        }
+
+        foreach (array_keys($datesToEvaluate) as $evalDate) {
+            $closedSessions = [];
+            if ($evalDate < $todayStr) {
+                $closedSessions = ['subuh', 'malam'];
+            } else {
+                if ($currentMinutes >= $bounds['subuh_selesai']) {
+                    $closedSessions[] = 'subuh';
+                }
+                if ($currentMinutes >= $bounds['malam_selesai']) {
+                    $closedSessions[] = 'malam';
+                }
+            }
+
+            foreach ($closedSessions as $closedSesi) {
+                if ($presensisTable->exists([
+                    'user_id' => $userId,
+                    'tanggal' => $evalDate,
+                    'sesi' => $closedSesi,
+                ])) {
+                    continue;
+                }
+
+                $hasActivePermit = $izinsTable->exists([
+                    'user_id' => $userId,
+                    'status IN' => ['pending', 'disetujui'],
+                    'tanggal_mulai <=' => $evalDate,
+                    'tanggal_selesai >=' => $evalDate,
+                    'OR' => [
+                        ['sesi IN' => ['semua', $closedSesi]],
+                        ['sesi IS' => null],
+                    ],
+                ]);
+
+                if (!$hasActivePermit) {
+                    $alpaEntity = $presensisTable->newEntity([
+                        'user_id' => $userId,
+                        'tanggal' => $evalDate,
+                        'waktu' => '00:00:00',
+                        'sesi' => $closedSesi,
+                        'status' => 'alpa',
+                        'keterangan' => 'Tidak melakukan presensi (Melewati batas waktu sesi)',
+                    ]);
+                    $presensisTable->save($alpaEntity);
+                }
+            }
+        }
     }
 }

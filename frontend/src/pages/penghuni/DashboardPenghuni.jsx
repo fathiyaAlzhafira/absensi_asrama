@@ -5,10 +5,10 @@ import Badge from '../../components/common/Badge';
 import Button from '../../components/common/Button';
 import AttendanceCapture from '../../components/penghuni/AttendanceCapture';
 import {
-  Camera,
-  Clock3,
+  CheckCircle2,
   FileText,
-  RefreshCw
+  RefreshCw,
+  XCircle
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
@@ -386,20 +386,39 @@ export default function DashboardPenghuni() {
             <p className="text-body resident-history-empty">Memuat riwayat presensi...</p>
           ) : riwayatTerbaru.length > 0 ? (
             <div className="resident-recent-list">
-              {riwayatTerbaru.map((record) => (
-                <div className="resident-recent-row" key={record.id}>
-                  <div className="resident-recent-icon">
-                    {record.sesi === 'subuh' ? <Clock3 size={17} /> : <Camera size={17} />}
+              {riwayatTerbaru.map((record) => {
+                const statusLower = String(record.status || '').toLowerCase();
+                const isAlfa = statusLower === 'alpa' || statusLower === 'alfa';
+                const isIzin = statusLower === 'izin';
+                const iconStyle = isAlfa
+                  ? { color: 'var(--color-error)', background: 'rgba(226, 33, 52, 0.14)' }
+                  : isIzin
+                    ? { color: 'var(--color-warning)', background: 'rgba(245, 155, 35, 0.14)' }
+                    : { color: 'var(--color-primary)', background: 'rgba(29, 185, 84, 0.14)' };
+                return (
+                  <div className="resident-recent-row" key={record.id}>
+                    <div className="resident-recent-icon" style={iconStyle}>
+                      {isAlfa ? (
+                        <XCircle size={17} />
+                      ) : isIzin ? (
+                        <FileText size={17} />
+                      ) : (
+                        <CheckCircle2 size={17} />
+                      )}
+                    </div>
+                    <div className="resident-recent-copy">
+                      <strong>Presensi {record.sesi || 'Asrama'}</strong>
+                      <span>
+                        {formatTanggalPendek(record.tanggal || tanggalHariIni)}
+                        {record.waktu && record.waktu !== '00:00:00' ? ` · ${formatWaktuRiwayat(record.waktu)}` : ''}
+                      </span>
+                    </div>
+                    <Badge variant={record.status === 'hadir' ? 'success' : isIzin ? 'warning' : 'error'} size="sm">
+                      {isAlfa ? 'alfa' : (record.status || 'tercatat')}
+                    </Badge>
                   </div>
-                  <div className="resident-recent-copy">
-                    <strong>Presensi {record.sesi || 'Asrama'}</strong>
-                    <span>{formatTanggalPendek(record.tanggal || tanggalHariIni)} · {formatWaktuRiwayat(record.waktu)}</span>
-                  </div>
-                  <Badge variant={record.status === 'hadir' ? 'success' : record.status === 'izin' ? 'warning' : 'error'} size="sm">
-                    {record.status || 'tercatat'}
-                  </Badge>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <p className="text-body resident-history-empty">Belum ada riwayat presensi.</p>

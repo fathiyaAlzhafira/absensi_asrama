@@ -23,6 +23,14 @@ const variantStatus = (status) => {
   return 'neutral';
 };
 
+const labelStatus = (status) => {
+  const kategori = kategoriStatus(status);
+  if (kategori === 'alpa') return 'alfa';
+  if (kategori === 'izin') return 'izin';
+  if (kategori === 'hadir') return 'hadir';
+  return status || 'Tercatat';
+};
+
 const formatTanggal = (tanggal) => {
   if (!tanggal) return '-';
   const date = new Date(`${String(tanggal).slice(0, 10)}T00:00:00`);
@@ -256,16 +264,18 @@ export default function RiwayatPresensi() {
                       </Badge>
                     </td>
                     <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-primary)' }}>
-                      {formatWaktu(row.waktu)} WIB
+                      {row.waktu && row.waktu !== '00:00:00' ? `${formatWaktu(row.waktu)} WIB` : '-'}
                     </td>
                     <td>
                       <Badge variant={variantStatus(row.status)} size="sm">
-                        {row.status || 'Tercatat'}
+                        {labelStatus(row.status)}
                       </Badge>
                     </td>
                     <td style={{ color: 'var(--color-text-secondary)', fontSize: '13px' }}>
                       {row.lat && row.long ? (
                         <span title={`${row.lat}, ${row.long}`}>Terverifikasi di area gedung</span>
+                      ) : kategoriStatus(row.status) === 'izin' ? (
+                        'Izin Disetujui'
                       ) : (
                         '-'
                       )}
@@ -310,7 +320,7 @@ export default function RiwayatPresensi() {
                   <strong>{formatTanggal(row.tanggal)}</strong>
                   <span>Sesi {row.sesi ? row.sesi.charAt(0).toUpperCase() + row.sesi.slice(1) : '-'} · {formatWaktu(row.waktu)} WIB</span>
                 </div>
-                <Badge variant={variantStatus(row.status)} size="sm">{row.status || 'Tercatat'}</Badge>
+                <Badge variant={variantStatus(row.status)} size="sm">{labelStatus(row.status)}</Badge>
               </div>
               <div className="resident-history-card-details">
                 <div>
