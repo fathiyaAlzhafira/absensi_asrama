@@ -292,10 +292,23 @@ export default function LaporanGlobal() {
       background: #ffffff;
     }
     .kop {
-      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
       border-bottom: 2.5px solid #111827;
-      padding-bottom: 10px;
+      padding-bottom: 12px;
       margin-bottom: 16px;
+      gap: 16px;
+    }
+    .kop-logo {
+      width: 65px;
+      height: 65px;
+      object-fit: contain;
+      flex-shrink: 0;
+    }
+    .kop-text {
+      flex: 1;
+      text-align: center;
     }
     .kop-sub {
       font-size: 11px;
@@ -305,9 +318,9 @@ export default function LaporanGlobal() {
       color: #15803d;
     }
     .kop-title {
-      font-size: 17px;
+      font-size: 16px;
       font-weight: 800;
-      margin: 3px 0 2px;
+      margin: 4px 0 3px;
       letter-spacing: 0.02em;
     }
     .kop-addr {
@@ -395,9 +408,13 @@ export default function LaporanGlobal() {
 </head>
 <body>
   <div class="kop">
-    <div class="kop-sub">Universitas Andalas · UPT Asrama Mahasiswa</div>
-    <div class="kop-title">LAPORAN GLOBAL PRESENSI PENGHUNI ASRAMA</div>
-    <div class="kop-addr">Kampus Limau Manis, Padang, Sumatera Barat</div>
+    <img src="${window.location.origin}/assets/TB.png" alt="Logo Universitas Andalas" class="kop-logo" />
+    <div class="kop-text">
+      <div class="kop-sub">Universitas Andalas · UPT Asrama Mahasiswa</div>
+      <div class="kop-title">LAPORAN GLOBAL PRESENSI PENGHUNI ASRAMA</div>
+      <div class="kop-addr">Kampus Limau Manis, Padang, Sumatera Barat</div>
+    </div>
+    <img src="${window.location.origin}/assets/logo-asrama.png" alt="Logo Asrama" class="kop-logo" />
   </div>
 
   <div class="meta-box">
@@ -449,11 +466,13 @@ export default function LaporanGlobal() {
 
     const iframe = document.createElement('iframe');
     iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
+    iframe.style.left = '-9999px';
+    iframe.style.top = '0';
+    iframe.style.width = '1024px';
+    iframe.style.height = '1400px';
     iframe.style.border = '0';
+    iframe.style.opacity = '0';
+    iframe.style.pointerEvents = 'none';
     document.body.appendChild(iframe);
 
     const doc = iframe.contentWindow.document;
@@ -461,15 +480,47 @@ export default function LaporanGlobal() {
     doc.write(html);
     doc.close();
 
-    iframe.onload = () => {
-      iframe.contentWindow.focus();
-      iframe.contentWindow.print();
+    const triggerPrint = () => {
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      } catch (err) {
+        console.warn('Gagal memicu cetak:', err);
+      }
       window.setTimeout(() => {
         if (document.body.contains(iframe)) {
           document.body.removeChild(iframe);
         }
-      }, 1000);
+      }, 2000);
     };
+
+    // Pastikan seluruh gambar di kop laporan telah dimuat sebelum dialog cetak muncul
+    const images = doc.images;
+    if (images && images.length > 0) {
+      let loadedCount = 0;
+      const totalImages = images.length;
+      const onImageDone = () => {
+        loadedCount += 1;
+        if (loadedCount >= totalImages) {
+          setTimeout(triggerPrint, 200);
+        }
+      };
+
+      for (let i = 0; i < totalImages; i++) {
+        if (images[i].complete) {
+          loadedCount += 1;
+        } else {
+          images[i].onload = onImageDone;
+          images[i].onerror = onImageDone;
+        }
+      }
+
+      if (loadedCount >= totalImages) {
+        setTimeout(triggerPrint, 200);
+      }
+    } else {
+      setTimeout(triggerPrint, 200);
+    }
   };
 
   const { ringkasan, rekap_mahasiswa: rekapMahasiswa, rekap_gedung: rekapGedung, data: detailList } = report;

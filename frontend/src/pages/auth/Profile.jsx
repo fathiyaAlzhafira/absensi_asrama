@@ -93,12 +93,24 @@ export default function Profile() {
     e.preventDefault();
     setPasswordMessage({ type: '', text: '' });
 
+    if (!passwordLama.trim()) {
+      setPasswordMessage({ type: 'error', text: 'Kata sandi saat ini (password lama) wajib diisi.' });
+      return;
+    }
+    if (!passwordBaru.trim()) {
+      setPasswordMessage({ type: 'error', text: 'Kata sandi baru wajib diisi.' });
+      return;
+    }
     if (passwordBaru.length < 8) {
       setPasswordMessage({ type: 'error', text: 'Kata sandi baru minimal 8 karakter.' });
       return;
     }
     if (passwordBaru !== konfirmasiPassword) {
       setPasswordMessage({ type: 'error', text: 'Konfirmasi kata sandi baru belum sama.' });
+      return;
+    }
+    if (passwordLama === passwordBaru) {
+      setPasswordMessage({ type: 'error', text: 'Kata sandi baru tidak boleh sama dengan kata sandi saat ini.' });
       return;
     }
 
@@ -114,7 +126,7 @@ export default function Profile() {
       setKonfirmasiPassword('');
       setPasswordMessage({ type: 'success', text: response.message || 'Kata sandi berhasil diperbarui.' });
     } catch (error) {
-      setPasswordMessage({ type: 'error', text: error.message || 'Kata sandi gagal diubah.' });
+      setPasswordMessage({ type: 'error', text: error.message || 'Kata sandi saat ini tidak sesuai. Pastikan kata sandi lama Anda benar.' });
     } finally {
       setSavingPassword(false);
     }
@@ -218,7 +230,24 @@ export default function Profile() {
           </summary>
           <div className="profile-accordion-content">
             {passwordMessage.text && (
-              <p className={`profile-form-message ${passwordMessage.type}`} role="status">{passwordMessage.text}</p>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '12px 14px',
+                  borderRadius: 'var(--radius-sm)',
+                  marginBottom: '16px',
+                  fontSize: '13px',
+                  lineHeight: '1.5',
+                  backgroundColor: passwordMessage.type === 'success' ? 'rgba(29, 185, 84, 0.15)' : 'rgba(226, 33, 52, 0.15)',
+                  border: `1px solid ${passwordMessage.type === 'success' ? 'var(--color-primary)' : 'var(--color-error)'}`,
+                  color: passwordMessage.type === 'success' ? 'var(--color-primary)' : 'var(--color-error)'
+                }}
+                role="status"
+              >
+                <span>{passwordMessage.text}</span>
+              </div>
             )}
             <form className="profile-form" onSubmit={handleChangePassword}>
               <Input label="Kata sandi saat ini" type="password" autoComplete="current-password" required value={passwordLama} onChange={(e) => setPasswordLama(e.target.value)} icon={LockKeyhole} />

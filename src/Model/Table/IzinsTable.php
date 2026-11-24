@@ -39,7 +39,7 @@ class IzinsTable extends Table
     {
         parent::initialize($config);
 
-        $this->setTable('izins');
+        $this->setTable('izin');
         $this->setDisplayField('jenis_izin');
         $this->setPrimaryKey('id');
 

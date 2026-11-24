@@ -257,7 +257,8 @@ class IzinsController extends ApiController
             }
             $gedungInfo = ['id' => $gedung->id, 'nama' => $gedung->nama];
 
-            $penghuniIds = $this->getPenghuniUserIdsByGedung((int)$gedung->id);
+            $fasilLantai = !empty($user->lantai) ? (int)$user->lantai : null;
+            $penghuniIds = $this->getPenghuniUserIdsByGedung((int)$gedung->id, $fasilLantai);
             if (empty($penghuniIds)) {
                 return $this->jsonSuccess([
                     'gedung' => $gedungInfo,
@@ -428,7 +429,8 @@ class IzinsController extends ApiController
                 return $this->authErrorResponse;
             }
 
-            $penghuniIds = $this->getPenghuniUserIdsByGedung((int)$gedung->id);
+            $fasilLantai = !empty($user->lantai) ? (int)$user->lantai : null;
+            $penghuniIds = $this->getPenghuniUserIdsByGedung((int)$gedung->id, $fasilLantai);
             if (empty($penghuniIds)) {
                 return $this->jsonSuccess([]);
             }

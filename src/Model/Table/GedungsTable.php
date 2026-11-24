@@ -39,7 +39,7 @@ class GedungsTable extends Table
     {
         parent::initialize($config);
 
-        $this->setTable('gedungs');
+        $this->setTable('gedung');
         $this->setDisplayField('nama');
         $this->setPrimaryKey('id');
 

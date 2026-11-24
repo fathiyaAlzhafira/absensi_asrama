@@ -41,12 +41,16 @@ class UsersTable extends Table
     {
         parent::initialize($config);
 
-        $this->setTable('users');
+        $this->setTable('user');
         $this->setDisplayField('nama');
         $this->setPrimaryKey('id');
 
         $this->belongsTo('Kamars', [
             'foreignKey' => 'kamar_id',
+            'joinType' => 'LEFT',
+        ]);
+        $this->belongsTo('Gedungs', [
+            'foreignKey' => 'gedung_id',
             'joinType' => 'LEFT',
         ]);
         $this->hasMany('Izins', [

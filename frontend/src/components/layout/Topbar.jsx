@@ -1,32 +1,50 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Clock, MapPin, Menu, User as UserIcon } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { api } from '../../services/api';
-import { getStoredPresensiSchedule, savePresensiSchedule } from '../../utils/presensiSchedule';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import {
+  Menu,
+  UserRound,
+  ChevronDown,
+  Sun,
+  LockKeyhole,
+  CircleHelp,
+  LogOut
+} from 'lucide-react';
 
 export default function Topbar({ onMenuClick }) {
-  const { user } = useAuth();
-  const [schedule, setSchedule] = useState(() => getStoredPresensiSchedule());
+  const { user, logout } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const menuRef = useRef(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
-    let active = true;
-    api.getPengaturanPresensi()
-      .then((res) => {
-        if (!active || !res?.data) return;
-        setSchedule(savePresensiSchedule(res.data));
-      })
-      .catch(() => {});
+    setMenuOpen(false);
+  }, [location.pathname, location.hash]);
 
-    const onUpdated = (event) => {
-      if (event.detail) setSchedule(event.detail);
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const closeOnOutsideClick = (event) => {
+      if (!menuRef.current?.contains(event.target)) setMenuOpen(false);
     };
-    window.addEventListener('presensi-schedule-updated', onUpdated);
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
     return () => {
-      active = false;
-      window.removeEventListener('presensi-schedule-updated', onUpdated);
+      document.removeEventListener('pointerdown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
     };
-  }, []);
+  }, [menuOpen]);
+
+  const handleLogout = async () => {
+    setMenuOpen(false);
+    await logout();
+    navigate('/login', { replace: true });
+  };
+
+  const closeMenu = () => setMenuOpen(false);
 
   return (
     <header className="topbar-header" style={{
@@ -42,16 +60,13 @@ export default function Topbar({ onMenuClick }) {
       zIndex: 90,
       gap: '12px',
       flexWrap: 'nowrap',
-      overflow: 'hidden'
+      overflow: 'visible'
     }}>
-      {/* Sisi Kiri: Info Sesi Presensi & Lokasi */}
+      {/* Sisi Kiri: Tombol Toggle Menu Mobile */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        gap: '10px',
-        minWidth: 0,
-        flex: '1 1 auto',
-        overflow: 'hidden'
+        gap: '10px'
       }}>
         <button
           type="button"
@@ -61,120 +76,61 @@ export default function Topbar({ onMenuClick }) {
         >
           <Menu size={20} />
         </button>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          fontSize: '12px',
-          backgroundColor: 'var(--color-surface-l2)',
-          padding: '6px 12px',
-          borderRadius: 'var(--radius-pill)',
-          color: 'var(--color-text-secondary)',
-          border: '1px solid var(--color-border)',
-          whiteSpace: 'nowrap',
-          maxWidth: '100%',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          flexShrink: 1
-        }}>
-          <Clock size={14} color="var(--color-primary)" style={{ flexShrink: 0 }} />
-          <span className="sesi-full-text" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            Sesi:{' '}
-            <strong style={{ color: 'var(--color-text-primary)' }}>
-              Subuh ({schedule.jam_subuh_mulai}–{schedule.jam_subuh_selesai})
-            </strong>{' '}
-            &amp;{' '}
-            <strong style={{ color: 'var(--color-text-primary)' }}>
-              Malam ({schedule.jam_malam_mulai}–{schedule.jam_malam_selesai})
-            </strong>
-          </span>
-          <span className="sesi-compact-text">
-            Sesi: <strong style={{ color: 'var(--color-text-primary)' }}>Subuh &amp; Malam</strong>
-          </span>
-        </div>
-
-        <div className="hide-on-tablet" style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '6px',
-          fontSize: '12px',
-          color: 'var(--color-neutral)',
-          whiteSpace: 'nowrap',
-          flexShrink: 0
-        }}>
-          <MapPin size={13} color="var(--color-warning)" style={{ flexShrink: 0 }} />
-          <span>Asrama Unand Limau Manis</span>
-        </div>
       </div>
 
-      {/* Sisi Kanan: Akun Pengguna */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        flexShrink: 0
-      }}>
-        <Link
-          to="/profil"
-          title={`Profil: ${user?.nama || 'Pengguna'}`}
-          className="topbar-profile-chip"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            borderRadius: 'var(--radius-pill)',
-            backgroundColor: 'var(--color-surface-l2)',
-            border: '1px solid var(--color-border)',
-            transition: 'all var(--transition-fast)',
-            whiteSpace: 'nowrap',
-            textDecoration: 'none'
-          }}
+      {/* Sisi Kanan: Akun Pengguna (Sama persis dengan Penghuni) */}
+      <div className="resident-profile-menu" ref={menuRef}>
+        <button
+          type="button"
+          className="resident-profile-link"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          aria-controls="topbar-profile-dropdown"
+          aria-label={`Menu profil ${user?.nama || 'Pengguna'}`}
+          onClick={() => setMenuOpen((open) => !open)}
         >
-          <div style={{
-            width: '32px',
-            height: '32px',
-            borderRadius: '50%',
-            backgroundColor: 'var(--color-secondary)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#FFFFFF',
-            flexShrink: 0
-          }}>
-            <UserIcon size={16} />
-          </div>
-          <div className="topbar-user-text" style={{ display: 'flex', flexDirection: 'column', maxWidth: '140px', overflow: 'hidden' }}>
-            <span style={{
-              fontSize: '13px',
-              fontWeight: '700',
-              color: 'var(--color-text-primary)',
-              lineHeight: 1.2,
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis'
-            }}>
-              {user?.nama || 'Pengguna'}
-            </span>
-            <span style={{
-              fontSize: '10px',
-              color: 'var(--color-neutral)',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis'
-            }}>
-              {user?.nim ? `NIM: ${user.nim}` : (user?.role || 'Asrama')}
-            </span>
-          </div>
-        </Link>
+          <span className="resident-avatar">
+            {user?.foto_profil ? (
+              <img
+                src={user.foto_profil.startsWith('http') ? user.foto_profil : user.foto_profil}
+                alt=""
+                style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
+              />
+            ) : (
+              <UserRound size={17} />
+            )}
+          </span>
+          <span className="resident-profile-name">{user?.nama || 'Pengguna'}</span>
+          <ChevronDown className="resident-profile-chevron" size={16} />
+        </button>
+
+        {menuOpen && (
+          <nav id="topbar-profile-dropdown" className="resident-profile-dropdown" role="menu" aria-label="Menu profil">
+            <Link to="/profil#lihat-profil" className="resident-profile-menu-item" role="menuitem" onClick={closeMenu}>
+              <UserRound size={17} />
+              <span>Lihat profil</span>
+            </Link>
+            <Link to="/profil#tampilan" className="resident-profile-menu-item" role="menuitem" onClick={closeMenu}>
+              <Sun size={17} />
+              <span>Atur tampilan</span>
+            </Link>
+            <Link to="/profil#kata-sandi" className="resident-profile-menu-item" role="menuitem" onClick={closeMenu}>
+              <LockKeyhole size={17} />
+              <span>Ubah kata sandi</span>
+            </Link>
+            <Link to="/profil#bantuan" className="resident-profile-menu-item" role="menuitem" onClick={closeMenu}>
+              <CircleHelp size={17} />
+              <span>Bantuan</span>
+            </Link>
+            <button type="button" className="resident-profile-menu-item danger" role="menuitem" onClick={handleLogout}>
+              <LogOut size={17} />
+              <span>Keluar</span>
+            </button>
+          </nav>
+        )}
       </div>
 
       <style>{`
-        .topbar-profile-chip {
-          padding: 4px 12px 4px 5px;
-        }
-        .topbar-profile-chip:hover {
-          background-color: var(--color-surface-l3) !important;
-          border-color: var(--color-neutral) !important;
-        }
         .mobile-menu-toggle {
           display: none;
           align-items: center;
@@ -188,41 +144,10 @@ export default function Topbar({ onMenuClick }) {
           border-radius: var(--radius-sm);
           cursor: pointer;
         }
-        .sesi-compact-text {
-          display: none;
-        }
-        .sesi-full-text {
-          display: inline;
-        }
-
-        @media (max-width: 1080px) {
-          .hide-on-tablet {
-            display: none !important;
-          }
-        }
 
         @media (max-width: 768px) {
           .mobile-menu-toggle {
             display: inline-flex;
-          }
-        }
-
-        @media (max-width: 900px) {
-          .sesi-full-text {
-            display: none !important;
-          }
-          .sesi-compact-text {
-            display: inline !important;
-          }
-          .topbar-user-text {
-            display: none !important;
-          }
-          .topbar-profile-chip {
-            padding: 3px !important;
-            border-radius: 50% !important;
-            width: 38px !important;
-            height: 38px !important;
-            justify-content: center !important;
           }
         }
 

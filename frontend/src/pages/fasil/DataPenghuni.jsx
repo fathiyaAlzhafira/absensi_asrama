@@ -309,11 +309,11 @@ function DetailModal({ penghuni, onClose }) {
           maxWidth: '700px',
           maxHeight: '92vh',
           overflowY: 'auto',
-          backgroundColor: 'var(--color-surface)',
+          backgroundColor: 'var(--color-surface-l1, #ffffff)',
           border: '1px solid var(--color-border)',
-          borderRadius: '12px',
+          borderRadius: '16px',
           padding: '24px',
-          boxShadow: '0 20px 30px rgba(0,0,0,0.3)',
+          boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
         }}
       >
         {/* Header */}
@@ -347,7 +347,7 @@ function DetailModal({ penghuni, onClose }) {
                 onError={(e) => { e.target.style.display = 'none'; }}
               />
             ) : (
-              <div style={{ width: '52px', height: '52px', borderRadius: '50%', backgroundColor: 'var(--color-surface)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ width: '52px', height: '52px', borderRadius: '50%', backgroundColor: 'var(--color-surface-l2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <UserRound size={26} color="var(--color-primary)" />
               </div>
             )}

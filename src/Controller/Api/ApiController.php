@@ -155,6 +155,18 @@ class ApiController extends AppController
     protected function getFasilGedung($user)
     {
         $gedungsTable = $this->fetchTable('Gedungs');
+
+        // 1. Cek berdasarkan gedung_id yang disimpan di tabel users
+        if (!empty($user->gedung_id)) {
+            $gedung = $gedungsTable->find()
+                ->where(['Gedungs.id' => $user->gedung_id])
+                ->first();
+            if ($gedung) {
+                return $gedung;
+            }
+        }
+
+        // 2. Fallback cek berdasarkan id_user pada tabel gedungs
         $gedung = $gedungsTable->find()
             ->where(['Gedungs.id_user' => $user->id])
             ->first();
@@ -171,32 +183,39 @@ class ApiController extends AppController
     }
 
     /**
-     * Mendapatkan daftar ID kamar (array of int) yang berada di dalam gedung tertentu.
+     * Mendapatkan daftar ID kamar (array of int) yang berada di dalam gedung tertentu (dan lantai tertentu jika dispesifikasikan).
      *
      * @param int $gedungId
+     * @param int|null $lantai
      * @return array<int>
      */
-    protected function getKamarIdsByGedung(int $gedungId): array
+    protected function getKamarIdsByGedung(int $gedungId, ?int $lantai = null): array
     {
         $kamarsTable = $this->fetchTable('Kamars');
-        return $kamarsTable->find()
+        $query = $kamarsTable->find()
             ->select(['id'])
-            ->where(['Kamars.gedung_id' => $gedungId])
-            ->all()
+            ->where(['Kamars.gedung_id' => $gedungId]);
+
+        if ($lantai !== null && $lantai > 0) {
+            $query->where(['Kamars.lantai' => $lantai]);
+        }
+
+        return $query->all()
             ->extract('id')
             ->map(fn($id) => (int)$id)
             ->toArray();
     }
 
     /**
-     * Mendapatkan daftar ID user penghuni (array of int) yang menempati gedung tertentu.
+     * Mendapatkan daftar ID user penghuni (array of int) yang menempati gedung dan lantai tertentu.
      *
      * @param int $gedungId
+     * @param int|null $lantai
      * @return array<int>
      */
-    protected function getPenghuniUserIdsByGedung(int $gedungId): array
+    protected function getPenghuniUserIdsByGedung(int $gedungId, ?int $lantai = null): array
     {
-        $kamarIds = $this->getKamarIdsByGedung($gedungId);
+        $kamarIds = $this->getKamarIdsByGedung($gedungId, $lantai);
         if (empty($kamarIds)) {
             return [];
         }

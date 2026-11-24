@@ -12,7 +12,7 @@ class LantaisTable extends Table
     public function initialize(array $config): void
     {
         parent::initialize($config);
-        $this->setTable('lantais');
+        $this->setTable('lantai');
         $this->setDisplayField('nomor_lantai');
         $this->setPrimaryKey('id');
 

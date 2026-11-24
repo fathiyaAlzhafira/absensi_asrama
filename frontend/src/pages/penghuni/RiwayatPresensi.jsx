@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Card from '../../components/common/Card';
 import Badge from '../../components/common/Badge';
-import Button from '../../components/common/Button';
-import Input from '../../components/common/Input';
-import { ChevronLeft, X } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api } from '../../services/api';
+import RiwayatFilterCard from '../../components/penghuni/RiwayatFilterCard';
+import PhotoPreviewModal from '../../components/penghuni/PhotoPreviewModal';
 
 const kategoriStatus = (status) => {
   const nilai = String(status || '').toLowerCase();
@@ -116,7 +116,6 @@ export default function RiwayatPresensi() {
   const openPhoto = async (row) => {
     setPhotoError('');
     const rawPath = String(row.foto_wajah || '');
-    // Jika data contoh lama memiliki path langsung di webroot (uploads/...)
     if (rawPath.includes('/')) {
       setSelectedPhoto(rawPath.startsWith('/') ? rawPath : `/${rawPath}`);
       return;
@@ -144,83 +143,21 @@ export default function RiwayatPresensi() {
         </div>
       </div>
 
-      {/* Ringkasan Statistik & Filter dalam Card yang Seragam */}
-      <Card hoverable={false} className="resident-permission-summary-card">
-        <div className="status-izin-header">
-          <div>
-            <span className="text-label" style={{ color: 'var(--color-primary)' }}>RINGKASAN KEHADIRAN</span>
-            <h2 className="text-card-title">Statistik &amp; Filter Riwayat</h2>
-            <p className="text-body">Rekap kehadiran presensi Subuh dan Malam Anda di asrama.</p>
-          </div>
-        </div>
-
-        <div className="status-izin-summary" style={{ marginBottom: '16px', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
-          <div className="status-summary-item">
-            <span className="text-small">Hadir</span>
-            <strong className="status-summary-approved">{statistik.hadir}</strong>
-          </div>
-          <div className="status-summary-item">
-            <span className="text-small">Izin</span>
-            <strong style={{ color: 'var(--color-warning)' }}>{statistik.izin}</strong>
-          </div>
-          <div className="status-summary-item">
-            <span className="text-small">Alfa</span>
-            <strong style={{ color: 'var(--color-error)' }}>{statistik.alpa}</strong>
-          </div>
-        </div>
-
-        <div className="resident-history-filter-bar">
-          <label className="resident-filter-mode">
-            <span>Sesi Absensi</span>
-            <select value={filterSesi} onChange={(e) => setFilterSesi(e.target.value)}>
-              <option value="all">Semua sesi (Subuh &amp; Malam)</option>
-              <option value="subuh">Sesi Subuh</option>
-              <option value="malam">Sesi Malam</option>
-            </select>
-          </label>
-
-          <label className="resident-filter-mode">
-            <span>Periode</span>
-            <select value={filterMode} onChange={(e) => setFilterMode(e.target.value)}>
-              <option value="all">Semua periode</option>
-              <option value="month">Berdasarkan bulan</option>
-              <option value="range">Rentang tanggal</option>
-            </select>
-          </label>
-
-          {filterMode === 'month' && (
-            <Input
-              type="month"
-              label="Pilih bulan"
-              value={filterMonth}
-              onChange={(e) => setFilterMonth(e.target.value)}
-            />
-          )}
-
-          {filterMode === 'range' && (
-            <>
-              <Input
-                type="date"
-                label="Dari tanggal"
-                value={tanggalMulai}
-                onChange={(e) => setTanggalMulai(e.target.value)}
-              />
-              <Input
-                type="date"
-                label="Sampai tanggal"
-                value={tanggalSelesai}
-                onChange={(e) => setTanggalSelesai(e.target.value)}
-              />
-            </>
-          )}
-
-          {(filterMode !== 'all' || filterSesi !== 'all') && (
-            <Button size="md" variant="secondary" onClick={resetFilter} style={{ height: '42px', textTransform: 'none', letterSpacing: 0 }}>
-              Reset Filter
-            </Button>
-          )}
-        </div>
-      </Card>
+      {/* Ringkasan Statistik & Filter Card */}
+      <RiwayatFilterCard
+        statistik={statistik}
+        filterSesi={filterSesi}
+        setFilterSesi={setFilterSesi}
+        filterMode={filterMode}
+        setFilterMode={setFilterMode}
+        filterMonth={filterMonth}
+        setFilterMonth={setFilterMonth}
+        tanggalMulai={tanggalMulai}
+        setTanggalMulai={setTanggalMulai}
+        tanggalSelesai={tanggalSelesai}
+        setTanggalSelesai={setTanggalSelesai}
+        onResetFilter={resetFilter}
+      />
 
       {rentangTidakValid && (
         <p className="resident-history-error">Tanggal awal tidak boleh melewati tanggal akhir.</p>
@@ -228,7 +165,7 @@ export default function RiwayatPresensi() {
       {error && <p className="resident-history-error">{error}</p>}
       {photoError && <p className="resident-history-error" role="alert">{photoError}</p>}
 
-      {/* Tabel Desktop yang Bersih */}
+      {/* Tabel Desktop */}
       <Card hoverable={false} className="resident-history-desktop" style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
           <table className="resident-clean-table">
@@ -306,7 +243,7 @@ export default function RiwayatPresensi() {
         </div>
       </Card>
 
-      {/* Daftar Kartu Mobile yang Bersih */}
+      {/* Tampilan Kartu Mobile */}
       <div className="resident-history-mobile">
         {loading ? (
           <Card hoverable={false} className="resident-history-empty-card">Memuat riwayat presensi...</Card>
@@ -348,33 +285,11 @@ export default function RiwayatPresensi() {
         )}
       </div>
 
-      {selectedPhoto && (
-        <div
-          className="resident-photo-modal"
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setSelectedPhoto(null);
-          }}
-        >
-          <div className="resident-photo-dialog">
-            <div className="resident-photo-header">
-              <h2 className="text-card-title">Foto Bukti Presensi</h2>
-              <button
-                type="button"
-                className="resident-camera-close"
-                onClick={() => setSelectedPhoto(null)}
-                aria-label="Tutup foto"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <img src={selectedPhoto} alt="Foto selfie presensi" />
-            <Button size="md" variant="secondary" onClick={() => setSelectedPhoto(null)} style={{ width: '100%', textTransform: 'none', letterSpacing: 0 }}>
-              Tutup
-            </Button>
-          </div>
-        </div>
-      )}
+      {/* Modal Foto Selfie */}
+      <PhotoPreviewModal
+        photoUrl={selectedPhoto}
+        onClose={() => setSelectedPhoto(null)}
+      />
     </div>
   );
 }

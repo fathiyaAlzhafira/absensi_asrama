@@ -116,15 +116,15 @@ function DetailModal({ izin, onClose, onApprove, onReject }) {
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          backgroundColor: 'var(--color-surface)',
+          backgroundColor: 'var(--color-surface-l1, #ffffff)',
           border: '1px solid var(--color-border)',
-          borderRadius: '12px',
+          borderRadius: '16px',
           width: '100%',
           maxWidth: '620px',
           maxHeight: '90vh',
           overflowY: 'auto',
-          padding: '24px',
-          boxShadow: '0 20px 30px rgba(0,0,0,0.3)',
+          padding: '26px',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
         }}
       >
         {/* Header Modal */}
@@ -150,9 +150,10 @@ function DetailModal({ izin, onClose, onApprove, onReject }) {
         {/* Identitas Penghuni */}
         <div style={{
           backgroundColor: 'var(--color-surface-l2)',
+          border: '1px solid var(--color-border)',
           borderRadius: '10px',
           padding: '16px',
-          marginBottom: '18px',
+          marginBottom: '16px',
           display: 'grid',
           gridTemplateColumns: '1fr 1fr',
           gap: '12px',
@@ -177,54 +178,88 @@ function DetailModal({ izin, onClose, onApprove, onReject }) {
         </div>
 
         {/* Detail Izin */}
-        <div style={{ marginBottom: '18px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '13px', marginBottom: '12px' }}>
-            <div>
-              <span className="text-small" style={{ color: 'var(--color-neutral)' }}>Jenis Izin</span>
-              <p style={{ fontWeight: '600', marginTop: '2px' }}>{izin.jenis_izin}</p>
-            </div>
-            <div>
-              <span className="text-small" style={{ color: 'var(--color-neutral)' }}>Tanggal Pengajuan</span>
-              <p style={{ fontWeight: '600', marginTop: '2px' }}>{formatTanggal(izin.created_at?.split(' ')[0])}</p>
-            </div>
-            <div style={{ gridColumn: '1 / -1' }}>
-              <span className="text-small" style={{ color: 'var(--color-neutral)' }}>Periode Izin</span>
-              <p style={{ fontWeight: '600', marginTop: '2px' }}>
-                {formatTanggal(izin.tanggal_mulai)} s/d {formatTanggal(izin.tanggal_selesai)}
-              </p>
-            </div>
+        <div style={{
+          backgroundColor: 'var(--color-surface-l2)',
+          border: '1px solid var(--color-border)',
+          borderRadius: '10px',
+          padding: '16px',
+          marginBottom: '16px',
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '12px',
+          fontSize: '13px',
+        }}>
+          <div>
+            <span className="text-small" style={{ color: 'var(--color-neutral)' }}>Jenis Izin</span>
+            <p style={{ fontWeight: '600', color: 'var(--color-text-primary)', marginTop: '2px', textTransform: 'capitalize' }}>
+              {izin.jenis_izin}
+            </p>
           </div>
-
-          <div style={{ backgroundColor: 'var(--color-surface-l2)', borderRadius: '8px', padding: '14px' }}>
-            <span className="text-small" style={{ color: 'var(--color-neutral)' }}>Alasan / Keterangan</span>
-            <p className="text-body" style={{ marginTop: '6px', lineHeight: '1.6', fontStyle: 'italic' }}>
-              "{izin.keterangan}"
+          <div>
+            <span className="text-small" style={{ color: 'var(--color-neutral)' }}>Tanggal Pengajuan</span>
+            <p style={{ fontWeight: '600', color: 'var(--color-text-primary)', marginTop: '2px' }}>
+              {formatTanggal(izin.created_at?.split(' ')[0])}
+            </p>
+          </div>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <span className="text-small" style={{ color: 'var(--color-neutral)' }}>Periode Izin</span>
+            <p style={{ fontWeight: '600', color: 'var(--color-text-primary)', marginTop: '2px' }}>
+              {formatTanggal(izin.tanggal_mulai)} s/d {formatTanggal(izin.tanggal_selesai)}
             </p>
           </div>
         </div>
 
+        {/* Alasan / Keterangan */}
+        <div style={{
+          backgroundColor: 'var(--color-surface-l2)',
+          border: '1px solid var(--color-border)',
+          borderRadius: '10px',
+          padding: '16px',
+          marginBottom: '16px',
+        }}>
+          <span className="text-small" style={{ color: 'var(--color-neutral)' }}>Alasan / Keterangan</span>
+          <p className="text-body" style={{
+            marginTop: '6px',
+            lineHeight: '1.6',
+            fontStyle: 'italic',
+            backgroundColor: 'var(--color-surface-l1, #ffffff)',
+            border: '1px solid var(--color-border)',
+            borderRadius: '8px',
+            padding: '12px',
+            color: 'var(--color-text-primary)',
+          }}>
+            "{izin.keterangan || '-'}"
+          </p>
+        </div>
+
         {/* Lampiran Bukti */}
-        <div style={{ marginBottom: '18px' }}>
-          <strong className="text-body" style={{ display: 'block', marginBottom: '10px' }}>
+        <div style={{
+          backgroundColor: 'var(--color-surface-l2)',
+          border: '1px solid var(--color-border)',
+          borderRadius: '10px',
+          padding: '16px',
+          marginBottom: '18px',
+        }}>
+          <strong className="text-body" style={{ display: 'block', marginBottom: '12px', color: 'var(--color-text-primary)' }}>
             <FileText size={15} style={{ verticalAlign: 'middle', marginRight: '6px' }} />
             Lampiran Bukti
           </strong>
 
           {fileUrl ? (
-            <div style={{ border: '1px solid var(--color-border)', borderRadius: '10px', overflow: 'hidden' }}>
+            <div style={{ border: '1px solid var(--color-border)', borderRadius: '10px', overflow: 'hidden', backgroundColor: 'var(--color-surface-l1, #ffffff)' }}>
               {fileType === 'image' ? (
                 <img
                   src={fileUrl}
                   alt="Bukti izin"
-                  style={{ width: '100%', maxHeight: '280px', objectFit: 'contain', backgroundColor: 'var(--color-surface-l2)', display: 'block' }}
+                  style={{ width: '100%', maxHeight: '280px', objectFit: 'contain', backgroundColor: 'var(--color-surface-l1, #ffffff)', display: 'block', padding: '8px' }}
                   onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
                 />
               ) : null}
-              <div style={{ display: fileType === 'image' ? 'none' : 'flex', flexDirection: 'column', alignItems: 'center', padding: '24px', gap: '12px', backgroundColor: 'var(--color-surface-l2)' }}>
+              <div style={{ display: fileType === 'image' ? 'none' : 'flex', flexDirection: 'column', alignItems: 'center', padding: '24px', gap: '12px', backgroundColor: 'var(--color-surface-l1, #ffffff)' }}>
                 {fileType === 'pdf' ? <FileText size={36} color="var(--color-error)" /> : <FileText size={36} color="var(--color-neutral)" />}
-                <span className="text-small">{izin.bukti_file}</span>
+                <span className="text-small" style={{ color: 'var(--color-text-primary)' }}>{izin.bukti_file}</span>
               </div>
-              <div style={{ padding: '10px 14px', borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ padding: '10px 14px', borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--color-surface-l2)' }}>
                 <span className="text-small" style={{ color: 'var(--color-neutral)' }}>
                   {fileType === 'pdf' ? 'Dokumen PDF' : fileType === 'image' ? 'Gambar' : 'Berkas'}
                 </span>
@@ -240,7 +275,7 @@ function DetailModal({ izin, onClose, onApprove, onReject }) {
               </div>
             </div>
           ) : (
-            <div style={{ padding: '20px', textAlign: 'center', backgroundColor: 'var(--color-surface-l2)', borderRadius: '8px', color: 'var(--color-neutral)' }}>
+            <div style={{ padding: '20px', textAlign: 'center', backgroundColor: 'var(--color-surface-l1, #ffffff)', borderRadius: '8px', border: '1px solid var(--color-border)', color: 'var(--color-neutral)' }}>
               <FileText size={28} style={{ marginBottom: '8px', opacity: 0.4 }} />
               <p className="text-small">Tidak ada lampiran yang diunggah.</p>
             </div>
@@ -249,9 +284,9 @@ function DetailModal({ izin, onClose, onApprove, onReject }) {
 
         {/* Catatan Verifikasi (jika sudah diproses) */}
         {izin.catatan_fasil && (
-          <div style={{ marginBottom: '18px', padding: '14px', backgroundColor: 'var(--color-surface-l2)', borderRadius: '8px' }}>
+          <div style={{ marginBottom: '18px', padding: '14px', backgroundColor: 'var(--color-surface-l2)', border: '1px solid var(--color-border)', borderRadius: '10px' }}>
             <span className="text-small" style={{ color: 'var(--color-neutral)' }}>Catatan Fasilitator:</span>
-            <p className="text-body" style={{ marginTop: '6px', fontStyle: 'italic' }}>"{izin.catatan_fasil}"</p>
+            <p className="text-body" style={{ marginTop: '6px', fontStyle: 'italic', color: 'var(--color-text-primary)' }}>"{izin.catatan_fasil}"</p>
           </div>
         )}
 
@@ -295,13 +330,13 @@ function VerifikasiModal({ izin, actionType, onClose, onConfirm, loading }) {
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
         style={{
-          backgroundColor: 'var(--color-surface)',
+          backgroundColor: 'var(--color-surface-l1, #ffffff)',
           border: '1px solid var(--color-border)',
-          borderRadius: '12px',
+          borderRadius: '16px',
           width: '100%',
           maxWidth: '480px',
           padding: '24px',
-          boxShadow: '0 20px 30px rgba(0,0,0,0.3)',
+          boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
         }}
       >
         {/* Header */}

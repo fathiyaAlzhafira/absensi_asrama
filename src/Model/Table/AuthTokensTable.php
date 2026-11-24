@@ -11,7 +11,7 @@ class AuthTokensTable extends Table
     {
         parent::initialize($config);
 
-        $this->setTable('auth_tokens');
+        $this->setTable('auth_token');
         $this->setPrimaryKey('id');
 
         $this->belongsTo('Users', [

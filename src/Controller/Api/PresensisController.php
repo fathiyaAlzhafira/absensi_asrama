@@ -33,10 +33,11 @@ class PresensisController extends ApiController
         }
 
         $gedungId = (int)$gedung->id;
-        $kamarIds = $this->getKamarIdsByGedung($gedungId);
+        $fasilLantai = !empty($user->lantai) ? (int)$user->lantai : null;
+        $kamarIds = $this->getKamarIdsByGedung($gedungId, $fasilLantai);
         $totalKamar = count($kamarIds);
 
-        $penghuniIds = $this->getPenghuniUserIdsByGedung($gedungId);
+        $penghuniIds = $this->getPenghuniUserIdsByGedung($gedungId, $fasilLantai);
         $totalPenghuni = count($penghuniIds);
 
         // Tanggal dan waktu lokal Indonesia (WIB)
@@ -240,7 +241,8 @@ class PresensisController extends ApiController
                 'nama' => $gedung->nama,
             ];
 
-            $penghuniIds = $this->getPenghuniUserIdsByGedung((int)$gedung->id);
+            $fasilLantai = !empty($user->lantai) ? (int)$user->lantai : null;
+            $penghuniIds = $this->getPenghuniUserIdsByGedung((int)$gedung->id, $fasilLantai);
             if (empty($penghuniIds)) {
                 return $this->jsonSuccess([
                     'gedung' => $gedungInfo,
@@ -531,7 +533,8 @@ class PresensisController extends ApiController
                 'nama' => $gedung->nama,
             ];
 
-            $penghuniIds = $this->getPenghuniUserIdsByGedung((int)$gedung->id);
+            $fasilLantai = !empty($user->lantai) ? (int)$user->lantai : null;
+            $penghuniIds = $this->getPenghuniUserIdsByGedung((int)$gedung->id, $fasilLantai);
             if (empty($penghuniIds)) {
                 return $this->jsonSuccess([
                     'gedung' => $gedungInfo,

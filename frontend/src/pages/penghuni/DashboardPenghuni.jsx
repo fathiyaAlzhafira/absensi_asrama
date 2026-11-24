@@ -1,15 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Card from '../../components/common/Card';
-import Badge from '../../components/common/Badge';
 import Button from '../../components/common/Button';
 import AttendanceCapture from '../../components/penghuni/AttendanceCapture';
-import {
-  CheckCircle2,
-  FileText,
-  RefreshCw,
-  XCircle
-} from 'lucide-react';
+import AttendanceClockHeader from '../../components/penghuni/AttendanceClockHeader';
+import RecentAttendanceCard from '../../components/penghuni/RecentAttendanceCard';
+import { FileText } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
 import {
@@ -73,8 +69,7 @@ export default function DashboardPenghuni() {
   const nextSessionStatus = !activeSession && nextSession && !nextSession.besok
     ? todayStatus[nextSession.id]
     : null;
-  // Tombol ambil presensi tetap aktif apabila pengajuan izin masih pending (belum disetujui),
-  // dan baru dinonaktifkan setelah presensi hadir tercatat atau izin resmi disetujui.
+
   const presensiTercatat = Boolean(sessionStatus && sessionStatus.status !== 'izin_pending');
   const buildingGeometry = building?.geofence_geojson || building?.polygon_geojson || building?.polygon || null;
   const geofenceStatus = building && !building.is_active
@@ -226,35 +221,15 @@ export default function DashboardPenghuni() {
       </Card>
 
       <Card hoverable={false} className="resident-attendance-card">
-        <div className="resident-attendance-clock">
-          <div>
-            <span className="text-label">WAKTU SEKARANG</span>
-            <time className="resident-live-clock" dateTime={now.toISOString()}>{formatJam(now)}</time>
-            <span className="resident-live-date">{formatTanggal(now)} WIB</span>
-          </div>
-
-          <div className="resident-current-location">
-            <div className="resident-location-info">
-              <span className="resident-location-label">LOKASI ANDA SEKARANG</span>
-              <strong>{lokasi.status === 'ready' ? getNamaWilayah(lokasi.coords) : 'Lokasi saat ini'}</strong>
-              {lokasi.status === 'loading' && <span>Mencari lokasi...</span>}
-              {lokasi.status === 'ready' && (
-                <span>{lokasi.coords.latitude.toFixed(6)}, {lokasi.coords.longitude.toFixed(6)}</span>
-              )}
-              {lokasi.status === 'error' && <span className="resident-location-error">{lokasi.error}</span>}
-            </div>
-            <button
-              type="button"
-              className="resident-location-refresh"
-              onClick={perbaruiLokasi}
-              disabled={lokasi.status === 'loading'}
-              aria-label="Perbarui lokasi"
-              title="Perbarui lokasi"
-            >
-              <RefreshCw size={16} />
-            </button>
-          </div>
-        </div>
+        {/* Header Jam Live WIB dan Lokasi Geofence GPS */}
+        <AttendanceClockHeader
+          now={now}
+          lokasi={lokasi}
+          onPerbaruiLokasi={perbaruiLokasi}
+          formatJam={formatJam}
+          formatTanggal={formatTanggal}
+          getNamaWilayah={getNamaWilayah}
+        />
 
         <div className="resident-attendance-action">
           {activeSession ? (
@@ -372,6 +347,7 @@ export default function DashboardPenghuni() {
       </Card>
 
       <div className="resident-dashboard-sections">
+        {/* Pintasan Pengajuan Izin */}
         <Card hoverable={false} className="resident-dashboard-section">
           <div className="resident-dashboard-section-heading">
             <div className="resident-dashboard-section-icon"><FileText size={20} /></div>
@@ -388,58 +364,14 @@ export default function DashboardPenghuni() {
           </div>
         </Card>
 
-        <Card hoverable={false} className="resident-dashboard-section resident-recent-history">
-          <div className="resident-history-section-header">
-            <div>
-              <span className="text-label">AKTIVITAS</span>
-              <h2 className="text-card-title">Riwayat terbaru</h2>
-            </div>
-          </div>
-          {riwayatLoading ? (
-            <p className="text-body resident-history-empty">Memuat riwayat presensi...</p>
-          ) : riwayatTerbaru.length > 0 ? (
-            <div className="resident-recent-list">
-              {riwayatTerbaru.map((record) => {
-                const statusLower = String(record.status || '').toLowerCase();
-                const isAlfa = statusLower === 'alpa' || statusLower === 'alfa';
-                const isIzin = statusLower === 'izin';
-                const iconStyle = isAlfa
-                  ? { color: 'var(--color-error)', background: 'rgba(226, 33, 52, 0.14)' }
-                  : isIzin
-                    ? { color: 'var(--color-warning)', background: 'rgba(245, 155, 35, 0.14)' }
-                    : { color: 'var(--color-primary)', background: 'rgba(29, 185, 84, 0.14)' };
-                return (
-                  <div className="resident-recent-row" key={record.id}>
-                    <div className="resident-recent-icon" style={iconStyle}>
-                      {isAlfa ? (
-                        <XCircle size={17} />
-                      ) : isIzin ? (
-                        <FileText size={17} />
-                      ) : (
-                        <CheckCircle2 size={17} />
-                      )}
-                    </div>
-                    <div className="resident-recent-copy">
-                      <strong>Presensi {record.sesi || 'Asrama'}</strong>
-                      <span>
-                        {formatTanggalPendek(record.tanggal || tanggalHariIni)}
-                        {record.waktu && record.waktu !== '00:00:00' ? ` · ${formatWaktuRiwayat(record.waktu)}` : ''}
-                      </span>
-                    </div>
-                    <Badge variant={record.status === 'hadir' ? 'success' : isIzin ? 'warning' : 'error'} size="sm">
-                      {isAlfa ? 'alfa' : (record.status || 'tercatat')}
-                    </Badge>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="text-body resident-history-empty">Belum ada riwayat presensi.</p>
-          )}
-          <Link to="/penghuni/riwayat" className="resident-history-detail-link resident-history-detail-bottom">
-            Lihat riwayat absensi lebih detail
-          </Link>
-        </Card>
+        {/* Ringkasan Riwayat Terbaru */}
+        <RecentAttendanceCard
+          riwayatLoading={riwayatLoading}
+          riwayatTerbaru={riwayatTerbaru}
+          tanggalHariIni={tanggalHariIni}
+          formatTanggalPendek={formatTanggalPendek}
+          formatWaktuRiwayat={formatWaktuRiwayat}
+        />
       </div>
     </div>
   );

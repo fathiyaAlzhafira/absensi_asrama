@@ -39,7 +39,7 @@ class PresensisTable extends Table
     {
         parent::initialize($config);
 
-        $this->setTable('presensis');
+        $this->setTable('presensi');
         $this->setDisplayField('sesi');
         $this->setPrimaryKey('id');
 

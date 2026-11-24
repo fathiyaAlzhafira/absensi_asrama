@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useSidebar } from '../../context/SidebarContext';
 import {
@@ -10,18 +10,15 @@ import {
   Users,
   Building,
   Settings,
-  LogOut,
   UserCheck,
   DoorOpen,
   ChevronLeft,
   Menu
 } from 'lucide-react';
-import Badge from '../common/Badge';
 
 export default function Sidebar({ mobileOpen = false, onMobileClose = () => {} }) {
-  const { user, role, logout } = useAuth();
+  const { role } = useAuth();
   const { isOpen, toggleSidebar } = useSidebar();
-  const navigate = useNavigate();
 
   // Menu Penghuni
   const penghuniMenu = [
@@ -56,11 +53,6 @@ export default function Sidebar({ mobileOpen = false, onMobileClose = () => {} }
   else if (role === 'admin') currentMenu = adminMenu;
   else currentMenu = penghuniMenu;
 
-  const handleLogout = async () => {
-    await logout();
-    navigate('/login', { replace: true });
-  };
-
   return (
     <aside
       className={`app-sidebar${mobileOpen ? ' mobile-open' : ''}`}
@@ -74,7 +66,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose = () => {} }
         borderRight: '1px solid var(--color-border)',
         display: 'flex',
         flexDirection: 'column',
-        justifyContent: 'space-between',
+        justifyContent: 'flex-start',
         padding: isOpen ? '24px 16px' : '20px 10px',
         zIndex: 100,
         transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s ease',
@@ -106,12 +98,9 @@ export default function Sidebar({ mobileOpen = false, onMobileClose = () => {} }
                 }}
               />
               <div style={{ overflow: 'hidden' }}>
-                <h2 style={{ fontSize: '14px', fontWeight: '800', color: 'var(--color-text-primary)', whiteSpace: 'nowrap' }}>
+                <h2 style={{ fontSize: '14px', fontWeight: '800', color: 'var(--color-text-primary)', whiteSpace: 'nowrap', margin: 0 }}>
                   ASRAMA UNAND
                 </h2>
-                <span style={{ fontSize: '10px', color: 'var(--color-primary)', fontWeight: '700', letterSpacing: '0.05em' }}>
-                  GREEN DECK
-                </span>
               </div>
             </div>
 
@@ -180,35 +169,6 @@ export default function Sidebar({ mobileOpen = false, onMobileClose = () => {} }
           </div>
         )}
 
-        {/* User Info Card (Kata 'ROLE' dihilangkan) */}
-        {isOpen && user && (
-          <div style={{
-            backgroundColor: 'var(--color-surface-l1)',
-            padding: '12px 14px',
-            borderRadius: 'var(--radius-md)',
-            marginBottom: '20px',
-            border: '1px solid var(--color-border)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '8px'
-          }}>
-            <div style={{
-              fontSize: '13px',
-              fontWeight: '700',
-              color: 'var(--color-text-primary)',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis'
-            }}>
-              {user.nama}
-            </div>
-            <Badge variant={role === 'admin' ? 'error' : role === 'fasil' ? 'warning' : 'success'} size="sm">
-              {role}
-            </Badge>
-          </div>
-        )}
-
         {/* Navigation Menu */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           {isOpen && (
@@ -254,41 +214,6 @@ export default function Sidebar({ mobileOpen = false, onMobileClose = () => {} }
             );
           })}
         </div>
-      </div>
-
-      {/* Tombol Keluar (Logout) di Bagian Bawah Sidebar */}
-      <div style={{ paddingTop: '16px', borderTop: '1px solid var(--color-border)' }}>
-        <button
-          onClick={handleLogout}
-          title={!isOpen ? 'Keluar' : undefined}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: isOpen ? 'flex-start' : 'center',
-            gap: '10px',
-            width: '100%',
-            padding: isOpen ? '10px 12px' : '10px 0',
-            backgroundColor: 'transparent',
-            border: '1px solid var(--color-border)',
-            borderRadius: 'var(--radius-sm)',
-            color: 'var(--color-neutral)',
-            fontSize: '13px',
-            fontWeight: '600',
-            cursor: 'pointer',
-            transition: 'all var(--transition-fast)'
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = 'var(--color-error)';
-            e.currentTarget.style.color = 'var(--color-error)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = 'var(--color-border)';
-            e.currentTarget.style.color = 'var(--color-neutral)';
-          }}
-        >
-          <LogOut size={16} style={{ flexShrink: 0 }} />
-          {isOpen && <span>Keluar</span>}
-        </button>
       </div>
     </aside>
   );

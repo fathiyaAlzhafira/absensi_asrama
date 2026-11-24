@@ -66,16 +66,22 @@ export async function apiRequest(endpoint, options = {}) {
     }
   }
 
-  if (response.status === 401 && endpoint !== '/auth/login') {
+  if (response.status === 401 && endpoint !== '/auth/login' && endpoint !== '/auth/change-password') {
     clearInvalidSession();
   }
 
   if (!response.ok) {
-    let errorMsg = responseData.message;
-    if (!errorMsg && responseData.errors) {
-      errorMsg = Object.values(responseData.errors)
-        .map((err) => (typeof err === 'object' ? Object.values(err).join(', ') : err))
-        .join(', ');
+    let errorMsg = responseData.message || '';
+    if (responseData.errors && typeof responseData.errors === 'object') {
+      const details = Object.values(responseData.errors)
+        .flatMap((err) => (typeof err === 'object' ? Object.values(err) : [err]))
+        .filter(Boolean)
+        .join('. ');
+      if (details) {
+        errorMsg = errorMsg && !errorMsg.toLowerCase().startsWith('gagal')
+          ? `${errorMsg} (${details})`
+          : details;
+      }
     }
     const error = new Error(errorMsg || `Permintaan gagal (status: ${response.status})`);
     error.status = response.status;

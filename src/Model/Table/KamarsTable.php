@@ -40,7 +40,7 @@ class KamarsTable extends Table
     {
         parent::initialize($config);
 
-        $this->setTable('kamars');
+        $this->setTable('kamar');
         $this->setDisplayField('nomor_kamar');
         $this->setPrimaryKey('id');
 

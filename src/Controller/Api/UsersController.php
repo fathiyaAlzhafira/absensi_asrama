@@ -53,7 +53,7 @@ class UsersController extends ApiController
                 return $this->authErrorResponse;
             }
 
-            $penghuniIds = $this->getPenghuniUserIdsByGedung((int)$gedung->id);
+            $penghuniIds = $this->getPenghuniUserIdsByGedung((int)$gedung->id, $user->lantai ? (int)$user->lantai : null);
             if (empty($penghuniIds)) {
                 return $this->jsonSuccess([]);
             }
@@ -77,6 +77,8 @@ class UsersController extends ApiController
             ]]);
         }
 
+        $allGedungsMap = $this->fetchTable('Gedungs')->find()->all()->combine('id', 'nama')->toArray();
+
         $usersList = [];
         foreach ($query->all() as $u) {
             $fotoProfil = $u->foto_profil;
@@ -86,6 +88,29 @@ class UsersController extends ApiController
                     ? (string)$fotoProfil
                     : '/' . ltrim((string)$fotoProfil, '/');
             }
+
+            $gedungNama = null;
+            $gedungId = null;
+            $lantaiVal = null;
+
+            if ($u->kamar && $u->kamar->gedung) {
+                $gedungNama = $u->kamar->gedung->nama;
+                $gedungId = $u->kamar->gedung->id;
+                $lantaiVal = $u->kamar->lantai;
+            } elseif ($u->role === 'fasil') {
+                $gedungId = $u->gedung_id;
+                if ($gedungId && isset($allGedungsMap[$gedungId])) {
+                    $gedungNama = $allGedungsMap[$gedungId];
+                } else {
+                    $fg = $this->fetchTable('Gedungs')->find()->where(['id_user' => $u->id])->first();
+                    if ($fg) {
+                        $gedungId = $fg->id;
+                        $gedungNama = $fg->nama;
+                    }
+                }
+                $lantaiVal = $u->lantai;
+            }
+
             $usersList[] = [
                 'id'          => $u->id,
                 'nama'        => $u->nama,
@@ -98,9 +123,9 @@ class UsersController extends ApiController
                 'foto_profil' => $fotoUrl,
                 'kamar_id'    => $u->kamar_id,
                 'kamar'       => $u->kamar ? $u->kamar->nomor_kamar : null,
-                'lantai'      => $u->kamar ? $u->kamar->lantai : null,
-                'gedung'      => ($u->kamar && $u->kamar->gedung) ? $u->kamar->gedung->nama : null,
-                'gedung_id'   => ($u->kamar && $u->kamar->gedung) ? $u->kamar->gedung->id : null,
+                'lantai'      => $lantaiVal,
+                'gedung'      => $gedungNama,
+                'gedung_id'   => $gedungId,
             ];
         }
 
@@ -130,7 +155,7 @@ class UsersController extends ApiController
             return $this->jsonError('Penghuni tidak ditemukan.', 404);
         }
 
-        // Fasil hanya boleh lihat penghuni di gedung binaannya
+        // Fasil hanya boleh lihat penghuni di gedung binaannya (dan lantai binaannya jika dispesifikasikan)
         if ($auth->role === 'fasil') {
             if ($user->role !== 'penghuni') {
                 return $this->jsonError('Akses ditolak. Hanya data penghuni yang dapat dilihat.', 403);
@@ -139,9 +164,15 @@ class UsersController extends ApiController
             if (!$gedung) {
                 return $this->authErrorResponse;
             }
-            $userGedungId = $user->kamar?->gedung_id;
+            $userGedungId = $user->kamar?->gedung_id ?? $user->gedung_id;
             if ((int)$userGedungId !== (int)$gedung->id) {
                 return $this->jsonError('Akses ditolak. Penghuni ini bukan bagian dari gedung binaan Anda.', 403);
+            }
+            $userLantai = $user->kamar?->lantai ?? $user->lantai;
+            if (!empty($auth->lantai) && !empty($userLantai)) {
+                if ((int)$userLantai !== (int)$auth->lantai) {
+                    return $this->jsonError('Akses ditolak. Penghuni ini bukan bagian dari lantai binaan Anda.', 403);
+                }
             }
         }
 
@@ -338,16 +369,68 @@ class UsersController extends ApiController
         $usersTable = $this->fetchTable('Users');
 
         $data = $this->request->getData();
-        if (isset($data['nim']) && $data['nim'] !== '' && $data['nim'] !== null) {
-            $data['nim'] = trim((string)$data['nim']);
-            if (!preg_match('/\A\d+\z/', $data['nim'])) {
-                return $this->jsonError('NIM hanya boleh berisi angka.', 422);
-            }
-        } else {
-            $data['nim'] = null;
+        $role = $data['role'] ?? 'penghuni';
+
+        // 1. Validasi Nama
+        $nama = trim((string)($data['nama'] ?? ''));
+        if ($nama === '') {
+            return $this->jsonError('Nama lengkap pengguna wajib diisi.', 422);
         }
+
+        // 2. Validasi Email
+        $email = strtolower(trim((string)($data['email'] ?? '')));
+        if ($email === '') {
+            return $this->jsonError('Email kampus wajib diisi.', 422);
+        }
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return $this->jsonError('Format email tidak valid. Masukkan alamat email yang lengkap.', 422);
+        }
+
+        if ($role === 'penghuni') {
+            if (!str_ends_with($email, '@student.unand.ac.id')) {
+                return $this->jsonError('Email penghuni asrama wajib menggunakan domain resmi: @student.unand.ac.id (contoh: nama@student.unand.ac.id).', 422);
+            }
+        }
+
+        // Cek keunikan email
+        $dupEmail = $usersTable->find()->where(['email' => $email])->first();
+        if ($dupEmail) {
+            return $this->jsonError("Email '{$email}' sudah terdaftar pada pengguna lain.", 422);
+        }
+        $data['email'] = $email;
+
+        // 3. Validasi NIM (Tepat 10 Digit Angka untuk Penghuni)
+        if ($role === 'penghuni') {
+            $nim = trim((string)($data['nim'] ?? ''));
+            if ($nim === '') {
+                return $this->jsonError('NIM wajib diisi untuk penghuni asrama.', 422);
+            }
+            if (!preg_match('/^\d{10}$/', $nim)) {
+                return $this->jsonError('NIM penghuni harus terdiri dari tepat 10 digit angka (contoh: 2311521001).', 422);
+            }
+            $dupNim = $usersTable->find()->where(['nim' => $nim])->first();
+            if ($dupNim) {
+                return $this->jsonError("NIM '{$nim}' sudah terdaftar pada pengguna lain.", 422);
+            }
+            $data['nim'] = $nim;
+        } else {
+            if (!empty($data['nim'])) {
+                $nim = trim((string)$data['nim']);
+                if (!preg_match('/^\d{10}$/', $nim)) {
+                    return $this->jsonError('NIM harus terdiri dari tepat 10 digit angka.', 422);
+                }
+                $dupNim = $usersTable->find()->where(['nim' => $nim])->first();
+                if ($dupNim) {
+                    return $this->jsonError("NIM '{$nim}' sudah terdaftar pada pengguna lain.", 422);
+                }
+                $data['nim'] = $nim;
+            } else {
+                $data['nim'] = null;
+            }
+        }
+
         if (empty($data['password'])) {
-            $firstWord = explode(' ', trim((string)($data['nama'] ?? 'User')))[0] ?? 'User';
+            $firstWord = explode(' ', trim($nama))[0] ?? 'User';
             $cleanFirstWord = preg_replace('/[^A-Za-z0-9]/', '', $firstWord) ?: 'User';
             $defaultRawPassword = $cleanFirstWord . ($data['nim'] ?? '123456');
             $data['password'] = password_hash($defaultRawPassword, PASSWORD_DEFAULT);
@@ -355,12 +438,47 @@ class UsersController extends ApiController
             $data['password'] = password_hash($data['password'], PASSWORD_DEFAULT);
         }
 
+        // Atur penempatan gedung dan lantai
+        if ($role === 'fasil') {
+            $data['kamar_id'] = null;
+            $data['gedung_id'] = !empty($data['gedung_id']) ? (int)$data['gedung_id'] : null;
+            $data['lantai'] = !empty($data['lantai']) ? (int)$data['lantai'] : null;
+        } elseif ($role === 'penghuni') {
+            if (!empty($data['kamar_id'])) {
+                $kamarObj = $this->fetchTable('Kamars')->find()->where(['id' => $data['kamar_id']])->first();
+                if ($kamarObj) {
+                    $data['gedung_id'] = (int)$kamarObj->gedung_id;
+                    $data['lantai'] = (int)$kamarObj->lantai;
+                }
+            } else {
+                $data['gedung_id'] = null;
+                $data['lantai'] = null;
+            }
+        }
+
         $user = $usersTable->newEntity($data);
         if ($usersTable->save($user)) {
+            // Jika role fasil dan gedung_id dipilih, tautkan juga ke tabel gedungs.id_user jika belum terisi
+            if ($user->role === 'fasil' && !empty($user->gedung_id)) {
+                $gedungsTable = $this->fetchTable('Gedungs');
+                $gedungEntity = $gedungsTable->find()->where(['id' => $user->gedung_id])->first();
+                if ($gedungEntity && empty($gedungEntity->id_user)) {
+                    $gedungEntity->id_user = $user->id;
+                    $gedungsTable->save($gedungEntity);
+                }
+            }
+
             $savedUser = $usersTable->find()
                 ->where(['Users.id' => $user->id])
                 ->contain(['Kamars' => ['Gedungs']])
                 ->first();
+
+            $fasilGedungNama = null;
+            if ($user->role === 'fasil' && !empty($user->gedung_id)) {
+                $g = $this->fetchTable('Gedungs')->find()->where(['id' => $user->gedung_id])->first();
+                $fasilGedungNama = $g?->nama;
+            }
+
             $userData = [
                 'id' => $user->id,
                 'nama' => $user->nama,
@@ -372,12 +490,24 @@ class UsersController extends ApiController
                 'no_hp' => $user->no_hp,
                 'kamar_id' => $user->kamar_id,
                 'kamar' => ($savedUser && $savedUser->kamar) ? $savedUser->kamar->nomor_kamar : null,
-                'gedung' => ($savedUser && $savedUser->kamar && $savedUser->kamar->gedung) ? $savedUser->kamar->gedung->nama : null,
+                'lantai' => ($savedUser && $savedUser->kamar) ? $savedUser->kamar->lantai : $user->lantai,
+                'gedung' => ($savedUser && $savedUser->kamar && $savedUser->kamar->gedung) ? $savedUser->kamar->gedung->nama : $fasilGedungNama,
+                'gedung_id' => $user->gedung_id,
             ];
             return $this->jsonSuccess($userData, 'Pengguna berhasil ditambahkan.', 201);
         }
 
-        return $this->jsonError('Gagal menambahkan pengguna.', 422, $user->getErrors());
+        $errors = $user->getErrors();
+        $errorMsgs = [];
+        foreach ($errors as $field => $errList) {
+            if (is_array($errList)) {
+                $errorMsgs[] = implode(', ', $errList);
+            } else {
+                $errorMsgs[] = (string)$errList;
+            }
+        }
+        $firstError = !empty($errorMsgs) ? implode('. ', $errorMsgs) : 'Gagal menambahkan pengguna.';
+        return $this->jsonError($firstError, 422, $errors);
     }
 
     /**
@@ -400,13 +530,41 @@ class UsersController extends ApiController
         $user = $usersTable->get($id);
         $data = $this->request->getData();
 
+        $role = $data['role'] ?? $user->role;
+
+        if (array_key_exists('email', $data)) {
+            $email = strtolower(trim((string)$data['email']));
+            if ($email === '') {
+                return $this->jsonError('Email kampus tidak boleh kosong.', 422);
+            }
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                return $this->jsonError('Format email tidak valid. Masukkan alamat email yang lengkap.', 422);
+            }
+            if ($role === 'penghuni' && !str_ends_with($email, '@student.unand.ac.id')) {
+                return $this->jsonError('Email penghuni asrama wajib menggunakan domain resmi: @student.unand.ac.id.', 422);
+            }
+            $dupEmail = $usersTable->find()->where(['email' => $email, 'id !=' => $id])->first();
+            if ($dupEmail) {
+                return $this->jsonError("Email '{$email}' sudah digunakan oleh pengguna lain.", 422);
+            }
+            $data['email'] = $email;
+        }
+
         if (array_key_exists('nim', $data)) {
             if ($data['nim'] !== '' && $data['nim'] !== null) {
-                $data['nim'] = trim((string)$data['nim']);
-                if (!preg_match('/\A\d+\z/', $data['nim'])) {
-                    return $this->jsonError('NIM hanya boleh berisi angka.', 422);
+                $nim = trim((string)$data['nim']);
+                if (!preg_match('/^\d{10}$/', $nim)) {
+                    return $this->jsonError('NIM harus terdiri dari tepat 10 digit angka (contoh: 2311521001).', 422);
                 }
+                $dupNim = $usersTable->find()->where(['nim' => $nim, 'id !=' => $id])->first();
+                if ($dupNim) {
+                    return $this->jsonError("NIM '{$nim}' sudah digunakan oleh pengguna lain.", 422);
+                }
+                $data['nim'] = $nim;
             } else {
+                if ($role === 'penghuni') {
+                    return $this->jsonError('NIM wajib diisi untuk penghuni asrama.', 422);
+                }
                 $data['nim'] = null;
             }
         }
@@ -417,12 +575,53 @@ class UsersController extends ApiController
             unset($data['password']);
         }
 
+        // Atur penempatan gedung dan lantai
+        if ($role === 'fasil') {
+            $data['kamar_id'] = null;
+            if (array_key_exists('gedung_id', $data)) {
+                $data['gedung_id'] = !empty($data['gedung_id']) ? (int)$data['gedung_id'] : null;
+            }
+            if (array_key_exists('lantai', $data)) {
+                $data['lantai'] = !empty($data['lantai']) ? (int)$data['lantai'] : null;
+            }
+        } elseif ($role === 'penghuni') {
+            if (!empty($data['kamar_id'])) {
+                $kamarObj = $this->fetchTable('Kamars')->find()->where(['id' => $data['kamar_id']])->first();
+                if ($kamarObj) {
+                    $data['gedung_id'] = (int)$kamarObj->gedung_id;
+                    $data['lantai'] = (int)$kamarObj->lantai;
+                }
+            } elseif (array_key_exists('kamar_id', $data) && empty($data['kamar_id'])) {
+                $data['gedung_id'] = null;
+                $data['lantai'] = null;
+            }
+        }
+
         $user = $usersTable->patchEntity($user, $data);
         if ($usersTable->save($user)) {
+            // Jika role fasil dan gedung_id dipilih, tautkan ke gedungs.id_user jika gedung belum ada fasilnya
+            if ($user->role === 'fasil') {
+                $gedungsTable = $this->fetchTable('Gedungs');
+                if (!empty($user->gedung_id)) {
+                    $gedungEntity = $gedungsTable->find()->where(['id' => $user->gedung_id])->first();
+                    if ($gedungEntity && (empty($gedungEntity->id_user) || (int)$gedungEntity->id_user === (int)$user->id)) {
+                        $gedungEntity->id_user = $user->id;
+                        $gedungsTable->save($gedungEntity);
+                    }
+                }
+            }
+
             $savedUser = $usersTable->find()
                 ->where(['Users.id' => $user->id])
                 ->contain(['Kamars' => ['Gedungs']])
                 ->first();
+
+            $fasilGedungNama = null;
+            if ($user->role === 'fasil' && !empty($user->gedung_id)) {
+                $g = $this->fetchTable('Gedungs')->find()->where(['id' => $user->gedung_id])->first();
+                $fasilGedungNama = $g?->nama;
+            }
+
             $userData = [
                 'id' => $user->id,
                 'nama' => $user->nama,
@@ -434,12 +633,24 @@ class UsersController extends ApiController
                 'no_hp' => $user->no_hp,
                 'kamar_id' => $user->kamar_id,
                 'kamar' => ($savedUser && $savedUser->kamar) ? $savedUser->kamar->nomor_kamar : null,
-                'gedung' => ($savedUser && $savedUser->kamar && $savedUser->kamar->gedung) ? $savedUser->kamar->gedung->nama : null,
+                'lantai' => ($savedUser && $savedUser->kamar) ? $savedUser->kamar->lantai : $user->lantai,
+                'gedung' => ($savedUser && $savedUser->kamar && $savedUser->kamar->gedung) ? $savedUser->kamar->gedung->nama : $fasilGedungNama,
+                'gedung_id' => $user->gedung_id,
             ];
             return $this->jsonSuccess($userData, 'Data pengguna berhasil diperbarui.');
         }
 
-        return $this->jsonError('Gagal memperbarui pengguna.', 422, $user->getErrors());
+        $errors = $user->getErrors();
+        $errorMsgs = [];
+        foreach ($errors as $field => $errList) {
+            if (is_array($errList)) {
+                $errorMsgs[] = implode(', ', $errList);
+            } else {
+                $errorMsgs[] = (string)$errList;
+            }
+        }
+        $firstError = !empty($errorMsgs) ? implode('. ', $errorMsgs) : 'Gagal memperbarui pengguna.';
+        return $this->jsonError($firstError, 422, $errors);
     }
 
     /**
